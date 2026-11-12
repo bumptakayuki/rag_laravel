@@ -54,21 +54,7 @@ class Retriever
         // pgvector に渡すベクトルは '[0.1,0.2,...]' という文字列にして ::vector で型を付ける
         $literal = '['.implode(',', array_map(fn ($v) => (string) (float) $v, $vector)).']';
 
-        // 類似度 = 1 − コサイン距離。並べ替えは距離そのもの（ORDER BY embedding <=> q）だけで行う。
-        // pgvector の HNSW 索引が使えるのはこの形（他の並べ替えキーを足すと使われなくなるおそれがある）。
-        // 実際に索引が使われるかは RS-007 の rag:explain で確かめる
-        $sql = <<<SQL
-            SELECT c.id, c.document_id, d.candidate_id, d.type, c.chunk_index,
-                   c.metadata->>'section' AS section, c.content,
-                   1 - (c.embedding <=> ?::vector) AS similarity
-            FROM chunks c
-            JOIN documents d ON d.id = c.document_id
-            WHERE c.embedding IS NOT NULL AND {$where}
-            ORDER BY c.embedding <=> ?::vector
-            LIMIT ?
-            SQL;
-
-        $rows = DB::select($sql, [$literal, ...$bindings, $literal, $limit]);
+        $rows = DB::select($this->buildSql($where), [$literal, ...$bindings, $literal, $limit]);
 
         return array_map(fn ($row) => new RetrievedChunk(
             chunkId: (int) $row->id,
@@ -80,6 +66,40 @@ class Retriever
             content: $row->content,
             similarity: (float) $row->similarity,
         ), $rows);
+    }
+
+    /**
+     * 実行する SQL を画面に見せる形で返す（? は :q / :type / :limit に置き換える）。
+     */
+    public function sqlForDisplay(string $scope, int $limit, ?string $documentType = null): string
+    {
+        [$where] = $this->conditions($scope, $limit, $documentType);
+        $sql = $this->buildSql($where);
+
+        // バインドする値（質問ベクトル・文書種別・件数）を名前つきの表記にする。実行には使わない
+        $sql = preg_replace('/\?::vector/', ':q', $sql);
+        $sql = preg_replace('/d\.type = \?/', 'd.type = :type', $sql);
+
+        return preg_replace('/LIMIT \?/', 'LIMIT :limit', $sql);
+    }
+
+    /**
+     * 類似度 = 1 − コサイン距離。並べ替えは距離そのもの（ORDER BY embedding <=> q）だけで行う。
+     * pgvector の HNSW 索引が使えるのはこの形（他の並べ替えキーを足すと使われなくなるおそれがある）。
+     * 実際に索引が使われるかは RS-007 の rag:explain で確かめる
+     */
+    private function buildSql(string $where): string
+    {
+        return <<<SQL
+            SELECT c.id, c.document_id, d.candidate_id, d.type, c.chunk_index,
+                   c.metadata->>'section' AS section, c.content,
+                   1 - (c.embedding <=> ?::vector) AS similarity
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            WHERE c.embedding IS NOT NULL AND {$where}
+            ORDER BY c.embedding <=> ?::vector
+            LIMIT ?
+            SQL;
     }
 
     /**

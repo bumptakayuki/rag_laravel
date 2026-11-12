@@ -73,6 +73,16 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
   - 本文はチャンクではなく文書（`documents.content`）から見出しで取る。チャンクは重なり（overlap）を持つので、つなげると同じ文が2回入るため
 - `queries` への記録（`mode` / `source_document_id` 列の追加を含む）は RS-005 で行う。RS-004 のコマンドは記録しない
 
+## 簡易検索画面（RS-004b で決定）
+- 開発者の指示で、RS-006 の質問画面（/）のうち検索部分だけを先に作った。回答・プロンプト表示・queries への記録は RS-005、求人票画面・候補者詳細・履歴は RS-006
+- `SearchController@index`（GET /）。フォームは GET（URL で検索条件を共有できる）。`q` がないときはフォームだけ出し、API を呼ばない
+- 入力エラーはリダイレクトせずその場で表示する（GET のため）。lang ファイルは入れず、この画面で使う規則のメッセージだけ日本語で書いた
+- 「検索の流れ」を見せるため、コントローラーで Embedder → `Retriever::retrieveByVector` → Ranker を工程ごとに呼んで時間を測る。表示用の SQL は `Retriever::sqlForDisplay()`（実行に使う SQL と同じ組み立て）
+- 見た目は UI イメージ（Design）の検索画面に合わせた。カードの展開は `<details>` で、JS は使わない
+- Tailwind は Play CDN（`cdn.tailwindcss.com/3.4.17`、SRI なし）で読む。ローカルの学習用画面のためで、本番向けではない
+- クエリの値が配列（`?q[]=x`）なら空文字にしてから検証する（エスケープで TypeError にしないため）
+- 求人票カードから求人票詳細へのリンクは、詳細画面ができる RS-006 で付ける
+
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ
 - ベクトル検索は生SQL（pgvector の演算子）。類似度を画面で見せる

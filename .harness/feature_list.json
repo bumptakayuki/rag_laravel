@@ -108,6 +108,31 @@
       ]
     },
     {
+      "id": "RS-004b",
+      "name": "簡易検索画面",
+      "goal": "質問画面（/）のうち検索部分だけを Blade + Tailwind CDN で先に作る（要件定義書 第4.4章の一部。回答生成・記録・他画面は RS-005 / RS-006）。開発者の指示で追加したタスク",
+      "done_when": [
+        "/ で検索対象（候補者／求人票）・質問・top_k・類似度下限・文書種別・スコア方法を指定して検索できる",
+        "候補者モードは1人1カードで、スコア・ヒット数・履歴書／職務経歴書のバッジと件数・最も近いチャンクの抜粋が出て、展開するとヒットチャンクが文書別に見出し・類似度・本文つきで並ぶ",
+        "求人票モードは1求人1カードで、職種名・ヒットした見出しと類似度が出る",
+        "検索の流れ（各工程の件数と所要時間、実行SQL）が出る",
+        "不正な入力は埋め込み API を呼ばずにエラー表示になる（Http::fake のテストで確認）"
+      ],
+      "approval_required": [
+        "OpenAI Embedding API への送信（ブラウザでの実データ確認）"
+      ],
+      "depends_on": [
+        "RS-004"
+      ],
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "check.sh: GATE: PASS（2026-11-12、154 tests / 886 assertions。SearchPageTest 30件を含む）",
+        "reviewer: APPROVE（1回目 REJECT: 配列入力で 500・境界値と XSS のテスト不足・gitleaks（.env のキー） → 修正後 APPROVE）",
+        "実データ: 開発者がブラウザで / の候補者モード（「PHPの経験がある人」）と求人票モードを確認"
+      ]
+    },
+    {
       "id": "RS-005",
       "name": "回答生成",
       "goal": "PromptBuilder・ClaudeClient・RagPipeline・rag:ask と queries への記録を作る",
