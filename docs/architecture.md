@@ -27,6 +27,24 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 | 画面 | Blade + Tailwind CDN。Vite / npm は使わない |
 | PHP | ローカル PHP は使わない。check.sh もコンテナ内で実行する |
 
+## データと分割（RS-002 で決定）
+- テーブルは要件定義書 第3章のとおり（candidates / documents / chunks / queries）。追加した制約は次の4つ
+  - `documents.candidate_id` は cascade delete（候補者を消すと文書・チャンクも消える）
+  - `documents.type` に CHECK 制約（rirekisho / shokumu / job のみ）
+  - `chunks` に `(document_id, chunk_index)` の unique
+  - `chunks.embedding` は NULL 可（分割直後は埋め込み前のため。取り込み完了後は RS-003 で全件埋める）
+- `queries.prompt` / `answer` は NULL 可（検索のみモードでは生成しない）
+- `queries` の Model 名は `QueryLog`（`Query` だと Eloquent の `query()` と紛らわしいため）
+- vector 型は Laravel 13 本体の `Blueprint::vector()` と `AsVector` キャストを使う。`pgvector/pgvector` パッケージは入れない
+- Chunker（`app/Services/Rag/Chunker.php`）の規則
+  - 見出しごとにセクションを分け、見出し名を `section` にする。見出し行は本文に入れない
+  - 本文の上限は `size - overlap` 文字。重なりを足しても1チャンクは必ず `size` 文字以内
+  - 長い段落は上限内の最後の「。！？!?」か改行で切る（上限の半分より前にしかなければ文字数で切る）
+  - `min_size` 未満の段落は上限に収まる範囲で次と結合する。`min_size`（初期値 150）は要件定義書に数値がないのでリポジトリで決めた
+  - 重なりはセクション内だけ（見出しをまたがない）
+  - 未対応: コードブロック（```）内の `# ...` 行も見出し扱いになる。サンプル文書にコードブロックが出るなら RS-003 で対処
+  - Chunker は `section` を返すだけ。`metadata.section` への格納は Ingestor（RS-003）で行い、そこでテストする
+
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ
 - ベクトル検索は生SQL（pgvector の演算子）。類似度を画面で見せる
