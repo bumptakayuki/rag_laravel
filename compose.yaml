@@ -1,0 +1,38 @@
+# ローカル開発環境（app: Laravel / db: PostgreSQL + pgvector）
+# 起動: docker compose up -d   → http://localhost:18080
+# DB の接続情報はローカル開発専用の固定値（秘密ではない）。API キーは backend/.env にだけ書く。
+services:
+  app:
+    build: ./docker/app
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    ports:
+      - "${APP_PORT:-18080}:8000"
+    # DB の接続先は backend/.env に書く（ここで environment に書くと実環境変数になり、
+    # phpunit.xml のテスト DB 指定より優先されてテストが開発 DB を消してしまう）
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+    ports:
+      - "${FORWARD_DB_PORT:-54320}:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      # 初回起動時だけ実行される（テスト用 DB rag_test の作成）
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  dbdata:

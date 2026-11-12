@@ -1,0 +1,12 @@
+# gitleaks 設定（check.sh の秘密情報チェックで自動的に読み込まれる）
+# 既定ルールはそのまま使い、git 管理外のサードパーティ依存だけを対象から外す。
+# 自分たちのコード・backend/.env・設定ファイルは引き続き検査する。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "サードパーティ依存（composer / npm が入れるもの）"
+paths = [
+  '''^backend/vendor/''',
+  '''^backend/node_modules/''',
+]

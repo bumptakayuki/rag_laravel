@@ -4,7 +4,8 @@ Laravel で候補者を自然文で検索できる簡易 RAG アプリ。開発�
 このファイルは「地図」。詳細は参照先を読むこと。
 
 ## 構成
-- アプリ本体: `backend/`（Laravel。未作成 → RS-001）
+- アプリ本体: `backend/`（Laravel 13）。実行は Docker Compose（`compose.yaml`、PHP はコンテナ内のみ）
+- 要件定義書（正本）: https://claude.ai/artifact/8SHGJaz6vGQhBTxX14cfsk
 - 設計: `docs/architecture.md`
 - タスクと受け入れ条件: `.harness/feature_list.json`
 - セッション引き継ぎ: `.harness/progress.md`
