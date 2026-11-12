@@ -53,4 +53,27 @@ return [
         'min_size' => (int) env('RAG_CHUNK_MIN_SIZE', 150),
     ],
 
+    // 検索（要件定義書 第4.2章・第5章）。rag:search / rag:match のオプションで1回ごとに上書きできる
+    'search' => [
+        // 1段目（生SQL）で取得するチャンク数
+        'chunk_limit' => (int) env('RAG_CHUNK_LIMIT', 50),
+
+        // 返す候補者（求人票）の数
+        'top_k' => (int) env('RAG_TOP_K', 5),
+
+        // 類似度の下限。これ未満のチャンクは集約の前に捨てる
+        'min_similarity' => (float) env('RAG_MIN_SIMILARITY', 0.0),
+
+        // 候補者スコアの集約方法: max（最大類似度）/ avg3（上位3チャンクの平均）/ max_plus_hits（最大類似度＋ヒット数の加点）
+        'candidate_score' => env('RAG_CANDIDATE_SCORE', 'max'),
+
+        // max_plus_hits の加点: hit_bonus × min(ヒット数 − 1, hit_bonus_max_hits)。
+        // 要件定義書は「小さな加点」とだけ書いているので、数値はリポジトリで決めた（docs/architecture.md）
+        'hit_bonus' => (float) env('RAG_HIT_BONUS', 0.01),
+        'hit_bonus_max_hits' => (int) env('RAG_HIT_BONUS_MAX_HITS', 5),
+
+        // 求人マッチングで検索に使う部分: required（必須条件）/ required_preferred（必須＋歓迎条件）/ full（全文）
+        'job_match_source' => env('RAG_JOB_MATCH_SOURCE', 'required'),
+    ],
+
 ];
