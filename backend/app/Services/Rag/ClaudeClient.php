@@ -11,8 +11,11 @@ use Throwable;
 /**
  * Anthropic Messages API（POST /messages）の呼び出し（要件定義書 第6章）。
  *
- * RS-003 では rag:seed-samples（ダミーデータ生成）で使う、JSON を返させる呼び出しだけを持つ。
- * 回答生成用の呼び出しは RS-005 で足す。
+ * - generateJson: rag:seed-samples（ダミーデータ生成）で使う。決めた形の JSON を返させる（RS-003）
+ * - generateText: 回答生成（RagPipeline）で使う。文章をそのまま返させる（RS-005）
+ *
+ * thinking は指定しない（現行モデルでは省略すると adaptive = モデルが必要なだけ考える）。
+ * temperature なども送らない（anthropic-version 2026-10-21 では送ると 400 になる）。
  *
  * - 構造化出力（output_config.format の json_schema）で、決めた形の JSON を必ず返させる
  * - 安全性の判定で断られた（stop_reason = refusal）ときは、サーバー側フォールバック
@@ -64,6 +67,29 @@ class ClaudeClient
         }
 
         return $json;
+    }
+
+    /**
+     * system と user の指示を送り、回答の文章を返す。
+     */
+    public function generateText(string $system, string $prompt): string
+    {
+        $message = $this->createMessage([
+            'model' => $this->model,
+            'max_tokens' => $this->maxTokens,
+            'system' => $system,
+            'messages' => [
+                ['role' => 'user', 'content' => $prompt],
+            ],
+            'fallbacks' => 'default',
+        ]);
+
+        $text = trim($this->text($message));
+        if ($text === '') {
+            throw new RuntimeException('Claude の応答に文章がなかった（stop_reason: '.($message['stop_reason'] ?? '不明').'）');
+        }
+
+        return $text;
     }
 
     /**

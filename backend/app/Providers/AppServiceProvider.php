@@ -39,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
             model: (string) config('rag.anthropic.model'),
             version: (string) config('rag.anthropic.version'),
             maxTokens: (int) config('rag.anthropic.max_tokens'),
-            retryDelaysMs: config('rag.embedding.retry_delays_ms'),
+            retryDelaysMs: config('rag.anthropic.retry_delays_ms'),
             baseUrl: (string) config('rag.anthropic.base_url'),
             timeout: (int) config('rag.anthropic.timeout'),
         ));

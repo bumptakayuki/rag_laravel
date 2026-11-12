@@ -4,7 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\RendersSearchResults;
 use App\Models\Document;
-use App\Services\Rag\JobMatcher;
+use App\Services\Rag\ExternalApiException;
+use App\Services\Rag\RagPipeline;
 use App\Services\Rag\SearchOptions;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -14,7 +15,7 @@ use InvalidArgumentException;
  * 求人票に合う候補者を探す（求人マッチング。要件定義書 第4.2章）。
  *
  * 求人票の一部を OpenAI Embeddings API で1本のベクトルにし、候補者検索と同じ仕組みで並べる。
- * queries への記録（mode = job_match）は RS-005 で行う。
+ * 実行ごとに queries に記録する（mode = job_match、source_document_id = 求人票）。
  */
 class RagMatch extends Command
 {
@@ -32,7 +33,7 @@ class RagMatch extends Command
 
     protected $description = '求人票に合う候補者を、候補者検索と同じ仕組みで並べる';
 
-    public function handle(JobMatcher $matcher): int
+    public function handle(RagPipeline $pipeline): int
     {
         $id = (string) $this->argument('job_document_id');
         $job = ctype_digit($id) ? Document::find((int) $id) : null;
@@ -52,22 +53,27 @@ class RagMatch extends Command
                 'score' => $this->option('score'),
                 'document_type' => $this->option('doc-type'),
             ]);
-            $options->candidateRanker(); // 設定の誤りは API を呼ぶ前に止める
-            // 求人票でない・見出しがない・--source の誤りは、match() が API を呼ぶ前に例外にする
-            $result = $matcher->match($job, $source, $options);
+            // 設定の誤り・求人票でない・見出しがない・--source の誤りは、match() が API を呼ぶ前に例外にする
+            $result = $pipeline->match($job, $source, $options);
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
+
+            return self::FAILURE;
+        } catch (ExternalApiException $e) {
+            // 外部 API の失敗（RagPipeline がログにも出している）。記録はされない。
+            // DB のエラーなど他の例外は捕まえない（「外部 API の失敗」と取り違えないように）
+            $this->error('外部 API の呼び出しに失敗した: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
         $full = (bool) $this->option('full');
         $this->line("求人票: [文書 {$job->id}] {$job->title}");
-        $this->line("検索に使った部分: {$source}（".mb_strlen($result->text).' 文字）');
-        $this->line('  '.($full ? $result->text : Str::limit(str_replace("\n", ' ', $result->text), 80)));
+        $this->line("検索に使った部分: {$source}（".mb_strlen($result->searchText).' 文字）');
+        $this->line('  '.($full ? $result->searchText : Str::limit(str_replace("\n", ' ', $result->searchText), 80)));
         $this->renderConditions('候補者', $options);
         $this->renderCandidates($result->ranking, $full);
 
-        return self::SUCCESS;
+        return $this->renderRecorded($result->queryLog?->id, $result->recordError);
     }
 }
