@@ -12,6 +12,7 @@
     ],
     "ask": [
       "Bash(git commit *)",
+      "Bash(git push *)",
       "Bash(composer require *)",
       "Bash(composer create-project *)",
       "Bash(npm install *)",
@@ -25,7 +26,8 @@
       "Read(./backend/.env)",
       "Read(./backend/.env.production)",
       "Bash(cat *.env*)",
-      "Bash(git push *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
       "Bash(git reset --hard *)",
       "Bash(git clean *)",
       "Bash(rm -rf *)",
