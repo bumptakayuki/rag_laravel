@@ -59,6 +59,20 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 - `chunks.metadata` には type / section / chunk_size / chunk_overlap を入れる。`--chunk-size` / `--overlap` を変えて比べるときは `--fresh` で入れ直す（内容が同じ文書はスキップされるため）
 - テストでは phpunit.xml で API キーをダミー値に固定し、TestCase で `Http::preventStrayRequests()` を有効にする（偽装していない送信は例外）
 
+## 検索（RS-004 で決定）
+- 範囲は要件定義書 第8章ステップ4どおり（候補者検索・求人票の検索・JobMatcher・`rag:search` / `rag:match`）。feature_list の RS-004 も合わせて広げた（開発者の判断）
+- 1段目 `Retriever`: 生SQL（`DB::select`）で `ORDER BY c.embedding <=> ?::vector LIMIT chunk_limit`。類似度は `1 - (embedding <=> q)`。埋め込み前（NULL）のチャンクは除く
+  - 対象: 候補者（`candidate_id IS NOT NULL`）/ 求人票（`type = 'job'`）。候補者は `--doc-type` で履歴書・職務経歴書に絞れる（WHERE で絞る）
+  - 引数の誤り（空の質問を含む）は埋め込み API を呼ぶ前に例外にする。`--top-k` / `--limit` は整数のみ受け付け、`chunk_limit` の上限は 1000（`SearchOptions::MAX_CHUNK_LIMIT`）
+  - `ORDER BY` は距離だけにした（HNSW 索引が使える形を保つため。同じ距離の並びは決めない）。索引が使われるかは RS-007 の `rag:explain` で確かめる
+- 2段目 `GroupRanker`（文書単位。求人票の検索）と `CandidateRanker`（キーだけ候補者に替えたサブクラス）。DB・設定を読まない純粋クラス。設定は `SearchOptions` が config とコマンドのオプションから集めて渡す
+  - 下限未満を捨てる → まとめる → スコア → 降順で top_k。同点はヒット数の多い順、次にキーの小さい順
+  - `avg3` はヒットが3件未満ならある分だけの平均（3で割らない）
+  - `max_plus_hits` = 最大類似度 + `hit_bonus`(0.01) × min(ヒット数 − 1, `hit_bonus_max_hits`(5))。要件定義書は「小さな加点」とだけ書いているので数値はリポジトリで決めた（開発者の判断）
+- `JobMatcher`: 求人票の見出し `必須条件` / `必須条件`+`歓迎条件` / 全文 を取り出し、1本のベクトルにして候補者検索に渡す。要件定義書の「必須スキル」はサンプル求人票では `必須条件` という見出し
+  - 本文はチャンクではなく文書（`documents.content`）から見出しで取る。チャンクは重なり（overlap）を持つので、つなげると同じ文が2回入るため
+- `queries` への記録（`mode` / `source_document_id` 列の追加を含む）は RS-005 で行う。RS-004 のコマンドは記録しない
+
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ
 - ベクトル検索は生SQL（pgvector の演算子）。類似度を画面で見せる

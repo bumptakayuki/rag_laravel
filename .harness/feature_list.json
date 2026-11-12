@@ -84,10 +84,12 @@
     {
       "id": "RS-004",
       "name": "検索",
-      "goal": "Retriever（生SQL）・CandidateRanker・rag:search を作る",
+      "goal": "Retriever（生SQL）・CandidateRanker・求人票の検索・JobMatcher・rag:search / rag:match を作る（要件定義書 第8章ステップ4）",
       "done_when": [
         "「PHPの経験がある人」で PHP 経験のある候補者が上位に並び、ヒットチャンクが文書種別・類似度つきで出る",
-        "CandidateRanker の単体テスト（max / avg3 / max_plus_hits）が通る"
+        "CandidateRanker の単体テスト（max / avg3 / max_plus_hits）が通る",
+        "rag:search --type=job で求人票が文書単位で並ぶ",
+        "Laravel の求人票で rag:match を実行すると、Laravel 経験のある候補者が上位に来る"
       ],
       "approval_required": [
         "OpenAI Embedding API への送信"
@@ -95,9 +97,15 @@
       "depends_on": [
         "RS-003"
       ],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "check.sh: GATE: PASS（2026-11-12、124 tests / 733 assertions。CandidateRankerTest 16件・SearchTest 17件を含む）",
+        "reviewer: APPROVE（1回目 REJECT: 実データ証拠なし・空の質問・整数オプション等 → 修正後 APPROVE）",
+        "実データ（開発 DB rag 371チャンク）rag:search \"PHPの経験がある人\": 上位 C002 0.5832 / C004 0.5512 / C015 0.5500 / C017 0.5432 / C001 0.5345。全員 PHP 経験あり（SampleRoster）。チャンクは「職務経歴書・職務要約 #1 0.5832」の形で種別・見出し・類似度つき",
+        "実データ rag:search --type=job \"PHPの経験がある人\": 10件中 1位 [文書41] J01 0.6008、2位 J04 0.4743",
+        "実データ rag:match 41（J01、required）: 1位 C001 0.5925、続いて C004 / C017 / C008 / C003（上位5名中4名が Laravel 経験者）。required_preferred でも1位 C001"
+      ]
     },
     {
       "id": "RS-005",
