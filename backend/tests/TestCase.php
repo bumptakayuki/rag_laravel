@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
@@ -42,7 +43,12 @@ abstract class TestCase extends BaseTestCase
             $this->abortBeforeTouchingDatabase(sprintf('実際の接続先が %s になっている', var_export($actual, true)));
         }
 
-        return parent::setUpTraits();
+        $traits = parent::setUpTraits();
+
+        // テストはネットワークを使わない。Http::fake() していない宛先への送信は例外にする
+        Http::preventStrayRequests();
+
+        return $traits;
     }
 
     private function abortBeforeTouchingDatabase(string $reason): never
