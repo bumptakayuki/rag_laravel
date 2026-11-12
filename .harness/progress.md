@@ -1,7 +1,7 @@
 # Development Progress
 
 ## Current task
-RS-002 テーブルと分割（done。開発者の確認待ち・未コミット）
+RS-002 テーブルと分割（done。PR #2 レビュー中）
 
 ## Completed
 - ハーネス最小構成を作成（CLAUDE.md / feature_list.json / progress.md / init.sh / check.sh / reviewer / settings.json）
@@ -19,6 +19,7 @@ RS-002 テーブルと分割（done。開発者の確認待ち・未コミット
 - Laravel が生成した backend/CLAUDE.md（php.new の curl インストール手順）は Docker 用の短いメモに置き換え、AGENTS.md は削除
 - RS-002: pgvector/pgvector パッケージは入れず、Laravel 13 本体の Blueprint::vector() と AsVector を使う
 - RS-002: Chunker の本文上限は size - overlap（重なり込みで size 以内）。min_size 初期値 150（RAG_CHUNK_MIN_SIZE）はリポジトリで決めた。詳細は docs/architecture.md「データと分割」
+- RS-002: Document の種別定数は英語名（TYPE_RESUME / TYPE_CAREER_HISTORY / TYPE_JOB）。値は rirekisho / shokumu / job のまま（PR #2 の指摘）
 - RS-002: 追加した制約: documents.type の CHECK、documents.candidate_id の cascade、chunks (document_id, chunk_index) unique、embedding は NULL 可。queries.prompt / answer も NULL 可
 
 ## Issues / Risks
@@ -30,10 +31,10 @@ RS-002 テーブルと分割（done。開発者の確認待ち・未コミット
 - ローカル PHP（Homebrew）は壊れたまま（icu4c）。コンテナで使うので放置。IDE の PHP 補完に必要なら別途対応する
 
 ## Next action
-- 開発者が RS-002 を確認 → コミットの指示 → RS-003（取り込み）の前に A-01（ダミーデータの生成方法）を決める
+- PR #2 のマージ → RS-003（取り込み）の前に A-01（ダミーデータの生成方法）を決める
 
 ## Last check
 - check.sh: GATE: PASS（2026-11-12、54件）
 
 ## Last commit
-- c203083（RS-002 の変更は未コミット）
+- feature/rs-002-tables-and-chunker（PR #2: https://github.com/bumptakayuki/rag_laravel/pull/2）

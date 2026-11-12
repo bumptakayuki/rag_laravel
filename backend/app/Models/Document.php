@@ -11,16 +11,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Document extends Model
 {
-    public const TYPE_RIREKISHO = 'rirekisho';
+    // 定数名は英語、値は要件定義書の type・取り込み元のファイル名（rirekisho.md / shokumu.md）に合わせる
 
-    public const TYPE_SHOKUMU = 'shokumu';
+    /** 履歴書 */
+    public const TYPE_RESUME = 'rirekisho';
 
+    /** 職務経歴書 */
+    public const TYPE_CAREER_HISTORY = 'shokumu';
+
+    /** 求人票 */
     public const TYPE_JOB = 'job';
 
     /** 画面表示用の種別名 */
     public const TYPE_LABELS = [
-        self::TYPE_RIREKISHO => '履歴書',
-        self::TYPE_SHOKUMU => '職務経歴書',
+        self::TYPE_RESUME => '履歴書',
+        self::TYPE_CAREER_HISTORY => '職務経歴書',
         self::TYPE_JOB => '求人票',
     ];
 

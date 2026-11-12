@@ -39,13 +39,13 @@ class RagSchemaTest extends TestCase
     public function test_candidate_has_at_most_one_document_per_type(): void
     {
         $candidate = Candidate::create(['code' => 'C001', 'name' => '架空太郎']);
-        $this->makeDocument($candidate, Document::TYPE_RIREKISHO, 'h1');
-        $this->makeDocument($candidate, Document::TYPE_SHOKUMU, 'h2');
+        $this->makeDocument($candidate, Document::TYPE_RESUME, 'h1');
+        $this->makeDocument($candidate, Document::TYPE_CAREER_HISTORY, 'h2');
 
         $this->assertSame(2, $candidate->documents()->count());
 
         $this->expectException(UniqueConstraintViolationException::class);
-        $this->makeDocument($candidate, Document::TYPE_RIREKISHO, 'h3');
+        $this->makeDocument($candidate, Document::TYPE_RESUME, 'h3');
     }
 
     public function test_job_postings_without_candidate_can_be_many(): void
@@ -129,7 +129,7 @@ class RagSchemaTest extends TestCase
     public function test_deleting_candidate_deletes_documents_and_chunks(): void
     {
         $candidate = Candidate::create(['code' => 'C001', 'name' => '架空太郎']);
-        $document = $this->makeDocument($candidate, Document::TYPE_SHOKUMU, 'h1');
+        $document = $this->makeDocument($candidate, Document::TYPE_CAREER_HISTORY, 'h1');
         $document->chunks()->create(['chunk_index' => 0, 'content' => 'a', 'token_estimate' => 1]);
 
         $candidate->delete();
