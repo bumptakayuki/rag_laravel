@@ -1,0 +1,125 @@
+{
+  "rules": "passes=true は status=done かつ evidence（check.sh の結果と reviewer の APPROVE）が揃った場合だけ。1セッション1タスク。",
+  "features": [
+    {
+      "id": "RS-001",
+      "name": "Laravel 雛形と品質ゲートの有効化",
+      "goal": "backend/ に Laravel を作成し、check.sh が実テストを実行して GATE: PASS になる",
+      "done_when": [
+        "php -v が正常に動く（ローカル PHP の修復を含む）",
+        "backend/ に Laravel が作成され、php artisan test が通る",
+        "pint --test が通る",
+        "bash scripts/check.sh が GATE: PASS で終わる"
+      ],
+      "approval_required": ["PHP の再インストール・brew 操作", "composer create-project"],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-002",
+      "name": "候補者テーブルと架空データ",
+      "goal": "candidates テーブル（氏名・職種・スキル・経験年数・自己紹介文）と、架空データの Seeder を作る",
+      "done_when": [
+        "migration と Candidate Model がある",
+        "Seeder が Faker ja_JP で架空の候補者を作る",
+        "Feature テストで Seeder 実行後のレコード数と必須項目を確認している"
+      ],
+      "approval_required": ["DB の種類の決定（docs/architecture.md の未決事項 A-01）"],
+      "depends_on": ["RS-001"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-003",
+      "name": "Embedding プロバイダーの抽象化",
+      "goal": "EmbeddingProvider インターフェースと、テスト用の決定的な FakeEmbeddingProvider を作る",
+      "done_when": [
+        "インターフェース経由で実装を切り替えられる（config で指定）",
+        "Fake は同じ入力に同じベクトルを返し、ネットワークを使わない",
+        "ユニットテストで次元数と決定性を確認している"
+      ],
+      "approval_required": ["実プロバイダー（外部 API）の選定と接続"],
+      "depends_on": ["RS-001"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-004",
+      "name": "候補者の Embedding 生成",
+      "goal": "artisan コマンドで候補者テキストを Embedding 化して保存する",
+      "done_when": [
+        "php artisan candidates:embed で未生成の候補者だけ処理される",
+        "再実行しても重複しない",
+        "Fake プロバイダーで Feature テストしている"
+      ],
+      "approval_required": [],
+      "depends_on": ["RS-002", "RS-003"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-005",
+      "name": "ベクトル検索（top-k）",
+      "goal": "クエリ文を Embedding 化し、類似度上位 k 件の候補者を返すサービスを作る",
+      "done_when": [
+        "類似度の降順で k 件返る",
+        "候補者0件・k が件数より大きい場合も正しく動く",
+        "固定ベクトルのテストで順位を確認している"
+      ],
+      "approval_required": ["ベクトル検索方式の決定（A-02）"],
+      "depends_on": ["RS-004"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-006",
+      "name": "検索画面",
+      "goal": "検索フォームと結果一覧（候補者名・職種・スコア）の画面を作る",
+      "done_when": [
+        "GET /search?q=... で結果が表示される",
+        "空クエリはバリデーションエラーになる",
+        "Feature テストで表示とバリデーションを確認している"
+      ],
+      "approval_required": [],
+      "depends_on": ["RS-005"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-007",
+      "name": "LLM による回答生成（根拠付き）",
+      "goal": "検索上位の候補者を文脈として LLM が推薦理由を返す。回答には根拠の候補者 ID を必ず含める",
+      "done_when": [
+        "LlmProvider インターフェースと Fake 実装がある",
+        "文脈にない候補者 ID を含む回答は破棄される",
+        "Fake プロバイダーで Feature テストしている"
+      ],
+      "approval_required": ["外部 LLM への送信（架空データであっても初回は承認）"],
+      "depends_on": ["RS-005"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    },
+    {
+      "id": "RS-008",
+      "name": "検索品質の固定評価",
+      "goal": "架空データの固定クエリと正解候補で recall@k を測り、check.sh に組み込む",
+      "done_when": [
+        "評価データが evals/ にある（架空データのみ）",
+        "recall@5 が閾値未満なら check.sh が FAIL になる"
+      ],
+      "approval_required": ["閾値の決定"],
+      "depends_on": ["RS-005"],
+      "status": "pending",
+      "passes": false,
+      "evidence": []
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/check.sh)",
+      "Bash(bash scripts/init.sh)",
+      "Bash(bash scripts/harness-context.sh)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(php artisan test *)",
+      "Bash(./vendor/bin/pint *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(composer require *)",
+      "Bash(composer create-project *)",
+      "Bash(npm install *)",
+      "Bash(php artisan migrate *)",
+      "Bash(brew *)",
+      "Edit(scripts/check.sh)",
+      "Edit(.claude/settings.json)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./backend/.env)",
+      "Read(./backend/.env.production)",
+      "Bash(cat *.env*)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(rm -rf *)",
+      "Bash(php artisan migrate:fresh *)",
+      "Bash(php artisan db:wipe *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/harness-context.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+.harness/evidence/last_check.txt
+.DS_Store
