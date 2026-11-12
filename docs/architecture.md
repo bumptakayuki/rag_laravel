@@ -71,7 +71,7 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
   - `max_plus_hits` = 最大類似度 + `hit_bonus`(0.01) × min(ヒット数 − 1, `hit_bonus_max_hits`(5))。要件定義書は「小さな加点」とだけ書いているので数値はリポジトリで決めた（開発者の判断）
 - `JobMatcher`: 求人票の見出し `必須条件` / `必須条件`+`歓迎条件` / 全文 を取り出し、1本のベクトルにして候補者検索に渡す。要件定義書の「必須スキル」はサンプル求人票では `必須条件` という見出し
   - 本文はチャンクではなく文書（`documents.content`）から見出しで取る。チャンクは重なり（overlap）を持つので、つなげると同じ文が2回入るため
-- `queries` への記録（`mode` / `source_document_id` 列の追加を含む）は RS-005 で行う。RS-004 のコマンドは記録しない
+- `queries` への記録（`mode` / `source_document_id` 列の追加を含む）は RS-005 で行う（→「回答生成と記録」）
 
 ## 簡易検索画面（RS-004b で決定）
 - 開発者の指示で、RS-006 の質問画面（/）のうち検索部分だけを先に作った。回答・プロンプト表示・queries への記録は RS-005、求人票画面・候補者詳細・履歴は RS-006
@@ -82,6 +82,30 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 - Tailwind は Play CDN（`cdn.tailwindcss.com/3.4.17`、SRI なし）で読む。ローカルの学習用画面のためで、本番向けではない
 - クエリの値が配列（`?q[]=x`）なら空文字にしてから検証する（エスケープで TypeError にしないため）
 - 求人票カードから求人票詳細へのリンクは、詳細画面ができる RS-006 で付ける
+
+## 回答生成と記録（RS-005 で決定）
+- `RagPipeline` が「検索 → 生成 → 記録」をつなぎ、工程ごとの時間（embed / search / rank / prompt / generate / total）を測る。コマンドは表示だけ
+  - `ask`（`rag:ask`）: 候補者検索 → `PromptBuilder` → `ClaudeClient::generateText` → `queries`（mode = question）
+  - `match`（`rag:match`）: `JobMatcher::sourceText` → 候補者検索 → `queries`（mode = job_match、`source_document_id` = 求人票）。回答（適合理由）は生成しない
+  - 記録の範囲は rag:ask と rag:match（開発者の判断）。`rag:search` と画面は記録しない。mode = job_search は列の値だけ用意し、記録は RS-006 の画面で行う
+- `PromptBuilder` は DB・設定を読まない純粋なクラス。上位 top_k 名 × 最大 `chunks_per_candidate`（`RAG_CHUNKS_PER_CANDIDATE`、初期値3）件を、候補者ごとに `## 候補者 C001 氏名` の下へ `[1] (職務経歴書・職務経歴) 本文` の形で並べる。番号は候補者をまたいで通しで振る
+  - system は「資料だけを根拠に／根拠の番号を [1] で示す／候補者コードと氏名を書く／関係ない資料は使わない／わからなければ『資料からはわかりません』とだけ答える」
+  - 回答中の `[番号]` を拾い、プロンプトにない番号は `unknownCitations` として警告する（Claude の誤りに気づけるように）
+- 資料が1件もない（下限で全部除外された）ときは Claude を呼ばずに「資料からはわかりません」を返して記録する（答えが決まっているため。API 費用も抑える）
+- `ClaudeClient::generateText` は構造化出力を使わず文章で返させる。`thinking` は送らない（現行モデルでは省略 = adaptive）。`temperature` なども送らない（API バージョン 2026-10-21 では 400）。refusal / max_tokens / 空の応答は例外
+- 再試行の待ち時間は `rag.anthropic.retry_delays_ms` に分けた（RS-003 では埋め込み側の設定を流用していた）
+- 外部 API の失敗は、`RagPipeline` が工程名（embed / generate）とエラー文をログに出し、`ExternalApiException`（`stage` つき）に包んで投げる。コマンドはこの型だけを捕まえ、ステータスコードとメッセージを表示して FAILURE。失敗した実行は記録しない（queries は結果が出た実行の履歴）。API キーや送った本文はログに出さない
+  - DB のエラー（`QueryException` も RuntimeException の仲間）は捕まえずにそのまま投げる（「外部 API の失敗」と取り違えないように。reviewer の指摘）
+- 記録（queries への保存）に失敗しても例外にしない。回答は API 費用をかけて作ったので捨てずに返し、`RagResult::$recordError` に理由を入れる。コマンドは回答を表示してから「記録できなかった」と出して FAILURE（reviewer の指摘）
+  - 保存は `DB::transaction` で包む（呼び出し元がトランザクション中でもセーブポイントまで戻すだけで済む）
+  - 理由（画面・ログ）は PDO のメッセージの1行目（SQLSTATE とエラーの種類）だけにする。QueryException のメッセージには SQL がバインド値ごと入り、PostgreSQL の制約違反では2行目以降の `DETAIL: Failing row contains (...)` に行の値が入る。どちらもプロンプト・回答の全文を含むため（reviewer の指摘）
+- 引数の誤り（空の質問・`--chunks-per-candidate` 0 など）は外部 API を呼ぶ前に止める。検索条件の確認には `Retriever::validate()` を使う
+- `queries` の追加列（migration `2026_11_13_000001`）
+  - `mode`: 既定 `question`（RS-005 より前の行もこれになる）と CHECK 制約（question / job_search / job_match）
+  - `source_document_id`: documents への FK。求人票を取り込み直して消えても履歴を残すため `nullOnDelete`（cascade にしない）
+- `retrieved` の中身: `counts`（retrieved / kept / total_groups）、`chunks`（1段目で取れた全チャンクの chunk_id・document_id・candidate_id・類似度）、`candidates`（上位 top_k 名のスコア・ヒット数・種別ごとのヒット数）、ask のときは `sources`（資料番号 → chunk_id・candidate_id）
+- `prompt` には `[system]` と `[user]` をまとめた全文を入れる
+- 注意: jsonb はキーの順番を保たない（短いキー順に並べ替える）。`latency_ms` を工程順に表示するときは、表示側で順番を決める（RS-006）
 
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ

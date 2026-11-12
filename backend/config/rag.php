@@ -24,6 +24,9 @@ return [
         'version' => env('ANTHROPIC_VERSION', '2026-10-21'),
         'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 16000),
         'timeout' => (int) env('ANTHROPIC_TIMEOUT', 300),
+
+        // 失敗時（429・5xx・接続エラー）の再試行の待ち時間（ミリ秒）。要素数 = 再試行回数
+        'retry_delays_ms' => [1000, 2000, 4000],
     ],
 
     'embedding' => [
@@ -74,6 +77,12 @@ return [
 
         // 求人マッチングで検索に使う部分: required（必須条件）/ required_preferred（必須＋歓迎条件）/ full（全文）
         'job_match_source' => env('RAG_JOB_MATCH_SOURCE', 'required'),
+    ],
+
+    // 回答生成（要件定義書 第4.3章）。rag:ask のオプションで1回ごとに上書きできる
+    'answer' => [
+        // プロンプトに入れる候補者あたりのチャンク数（類似度の高い順）
+        'chunks_per_candidate' => (int) env('RAG_CHUNKS_PER_CANDIDATE', 3),
     ],
 
 ];

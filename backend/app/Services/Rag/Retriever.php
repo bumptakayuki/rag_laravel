@@ -84,6 +84,14 @@ class Retriever
     }
 
     /**
+     * 検索条件だけを確かめる（誤りなら例外）。埋め込みを自分で呼ぶ側（RagPipeline）が、API を呼ぶ前に使う
+     */
+    public function validate(string $scope, int $limit, ?string $documentType = null): void
+    {
+        $this->conditions($scope, $limit, $documentType);
+    }
+
+    /**
      * 類似度 = 1 − コサイン距離。並べ替えは距離そのもの（ORDER BY embedding <=> q）だけで行う。
      * pgvector の HNSW 索引が使えるのはこの形（他の並べ替えキーを足すと使われなくなるおそれがある）。
      * 実際に索引が使われるかは RS-007 の rag:explain で確かめる

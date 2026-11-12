@@ -114,6 +114,22 @@ trait RendersSearchResults
         return implode(' / ', $parts);
     }
 
+    /**
+     * queries に記録できたかを表示し、終了コードを返す。
+     * 記録に失敗しても結果（回答）は先に表示してある。「実行ごとに記録する」を満たせていないので FAILURE にする
+     */
+    private function renderRecorded(?int $queryId, ?string $recordError): int
+    {
+        if ($queryId === null) {
+            $this->error('結果を queries に記録できなかった（上の結果は表示のみ）: '.$recordError);
+
+            return self::FAILURE;
+        }
+        $this->line("queries に記録した: id={$queryId}");
+
+        return self::SUCCESS;
+    }
+
     /** 整数のオプションを受け取る。未指定は null、整数でなければ例外（1.5 を黙って 1 にしない） */
     private function intOption(string $name): ?int
     {
