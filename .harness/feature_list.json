@@ -45,9 +45,16 @@
       "depends_on": [
         "RS-001"
       ],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "2026-11-12 check.sh: GATE: PASS（harness / gitleaks / php artisan test 54件 122 assertions / pint --test / no skipped tests）",
+        "RagSchemaTest: content_hash unique、candidate_id+type unique（求人票の NULL は複数可）、type の CHECK、chunks cascade、embedding が vector(1536)（format_type で確認）、jsonb の読み書き",
+        "ChunkerTest: 段落単位・小段落結合（min_size 境界）・上限ちょうど／+1・句点で切る・オーバーラップ（段落／セクションをまたがない／前チャンクが短い）・見出し判定8件・日本語の文字数と復元・CRLF・不正な設定値",
+        "TestCase のガード強化を実証: DB_URL 注入、DB_DATABASE=rag 注入の両方で DB に触る前に中止",
+        "開発者の承認後、開発 DB rag に migrate を実行。psql で chunks.embedding = vector(1536) を確認",
+        "reviewer: APPROVE（low 指摘のうち cascade の記録・document 単独削除のテスト・境界テスト2件を対応。fenced code と metadata.section 格納は RS-003 へ）"
+      ]
     },
     {
       "id": "RS-003",

@@ -3,6 +3,7 @@
 namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 abstract class TestCase extends BaseTestCase
@@ -23,13 +24,33 @@ abstract class TestCase extends BaseTestCase
         $database = config("database.connections.{$connection}.database");
 
         if ($database !== self::TEST_DATABASE) {
-            throw new RuntimeException(sprintf(
-                'テストの接続先が %s ではなく %s になっている。DB を消す前に中止した（実環境変数 DB_DATABASE を確認すること）',
-                self::TEST_DATABASE,
+            $this->abortBeforeTouchingDatabase(sprintf(
+                '設定上の DB 名が %s になっている（実環境変数 DB_DATABASE を確認すること）',
                 var_export($database, true),
             ));
         }
 
+        // DB_URL があると database より優先され、上の確認をすり抜けて別の DB につながる
+        $url = config("database.connections.{$connection}.url");
+        if (! empty($url)) {
+            $this->abortBeforeTouchingDatabase('DB_URL が設定されている（実環境変数 DB_URL を確認すること）');
+        }
+
+        // 設定ではなく「実際に接続した DB」の名前も確かめる（DB_HOST などで別サーバーを指していても気づける）
+        $actual = DB::connection($connection)->selectOne('SELECT current_database() AS db')->db;
+        if ($actual !== self::TEST_DATABASE) {
+            $this->abortBeforeTouchingDatabase(sprintf('実際の接続先が %s になっている', var_export($actual, true)));
+        }
+
         return parent::setUpTraits();
+    }
+
+    private function abortBeforeTouchingDatabase(string $reason): never
+    {
+        throw new RuntimeException(sprintf(
+            'テストの接続先が %s ではない: %s。DB を消す前に中止した',
+            self::TEST_DATABASE,
+            $reason,
+        ));
     }
 }
