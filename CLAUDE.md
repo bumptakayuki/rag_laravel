@@ -33,7 +33,7 @@ Laravel で候補者を自然文で検索できる簡易 RAG アプリ。開発�
 - テストを削除・skip・弱体化して合格扱いにしない。`check.sh` を書き換えてゲートを緩めない
 - 未実行のチェックを「成功」と報告しない。「完了した」と言うのは `GATE: PASS` を確認した後だけ
 - 同じ失敗が2回続いたら方針を見直す。修正は最大3回で止め、原因・試したこと・次の案を progress.md に書いて開発者に渡す
-- 候補者データは **架空データのみ**（Seeder / Faker ja_JP）。実在人物のデータを repo やプロンプトに入れない
+- 候補者データは **架空データのみ**（`rag:seed-samples` が Claude API で生成し、`storage/app/samples/` にコミットする）。実在人物のデータを repo やプロンプトに入れない
 - `.env` や API キーを読まない・表示しない・ログに出さない
 - 外部 LLM / Embedding API への送信、`composer require` / `npm install`、migration の実行、`git push` は承認が必要
 - 本番環境・本番 DB には触れない

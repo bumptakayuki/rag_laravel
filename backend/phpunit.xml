@@ -28,6 +28,9 @@
         <env name="DB_CONNECTION" value="pgsql" force="true"/>
         <env name="DB_DATABASE" value="rag_test" force="true"/>
         <env name="DB_URL" value="" force="true"/>
+        <!-- 外部 API のキーはテスト用のダミー値に固定する（本物のキーを使わない。通信は Http::fake() で偽装） -->
+        <env name="OPENAI_API_KEY" value="test-openai-key" force="true"/>
+        <env name="ANTHROPIC_API_KEY" value="test-anthropic-key" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

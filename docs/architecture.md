@@ -42,8 +42,22 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
   - 長い段落は上限内の最後の「。！？!?」か改行で切る（上限の半分より前にしかなければ文字数で切る）
   - `min_size` 未満の段落は上限に収まる範囲で次と結合する。`min_size`（初期値 150）は要件定義書に数値がないのでリポジトリで決めた
   - 重なりはセクション内だけ（見出しをまたがない）
-  - 未対応: コードブロック（```）内の `# ...` 行も見出し扱いになる。サンプル文書にコードブロックが出るなら RS-003 で対処
-  - Chunker は `section` を返すだけ。`metadata.section` への格納は Ingestor（RS-003）で行い、そこでテストする
+  - 未対応: コードブロック（```）内の `# ...` 行も見出し扱いになる。サンプル文書にはコードブロックを入れない（RS-003 の生成時に検査して弾く）
+  - Chunker は `section` を返すだけ。`metadata.section` への格納は Ingestor（RS-003）で行い、そこでテストしている
+
+## 取り込みとダミーデータ（RS-003 で決定）
+- A-01 は「要件定義書どおり Claude API で生成」に決定。CLAUDE.md のガードレールもこれに合わせて修正した
+- ダミーデータの設計図は `app/Services/Rag/Samples/SampleRoster.php`（候補者20名・求人票10件・評価10問）。生成前に「誰がどの条件に当てはまるか」を決め、eval.json も同じ設計図から作る
+  - 評価の質問に関わる語（Laravel / Kubernetes / 機械学習 / Vue / エンジニア採用）は、正解でない候補者の文書には書かせない（`RESERVED_WORDS`。プロンプトで伝え、生成後にも検査）。言い換え候補者（C002・C013）もこの仕組みで製品名を書かない
+  - Claude には見出しごとの本文だけを JSON（構造化出力）で返させ、見出し・「氏名：」行はコードで組み立てる
+  - 生成後の検査: 連絡先・住所・URL・生年月日らしき文字列、コードブロック、`#` 見出し、禁止語。違反は理由を添えて最大3回まで作り直させる
+- 生成物 `storage/app/samples/` と `storage/app/eval.json` はコミットする（`storage/app/.gitignore` で除外を解除）。既存ファイルは `--force` なしでは作り直さない
+- ClaudeClient は RS-003 では JSON 生成だけ持つ（回答生成は RS-005）。`anthropic-version` は要件定義書の 2023-06-01 ではなく現行の `2026-10-21` を既定にした（`ANTHROPIC_VERSION` で変更可）。拒否（refusal）に備えて `fallbacks: "default"`（beta `server-side-fallback-2026-07-01`）を付ける
+- 外部 API は SDK を入れず、要件定義書どおり Laravel の Http クライアントで直接呼ぶ。429・5xx・接続エラーは 1s / 2s / 4s の指数バックオフで3回まで再試行（`rag.embedding.retry_delays_ms`）
+- Ingestor の重複防止: 同じ場所（候補者×種別 / 求人票はファイル）で content_hash が同じならスキップ、違えば古い文書を消して入れ直す。別の場所に同じ内容があればスキップ
+- Ingestor は先に全チャンクを埋め込み、保存（と `--fresh` の削除）は最後に1トランザクションで行う。API が失敗しても DB は変わらない
+- `chunks.metadata` には type / section / chunk_size / chunk_overlap を入れる。`--chunk-size` / `--overlap` を変えて比べるときは `--fresh` で入れ直す（内容が同じ文書はスキップされるため）
+- テストでは phpunit.xml で API キーをダミー値に固定し、TestCase で `Http::preventStrayRequests()` を有効にする（偽装していない送信は例外）
 
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ
@@ -55,5 +69,5 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 ## 未決事項（開発者が決める）
 | ID | 内容 | メモ |
 | --- | --- | --- |
-| A-01 | ダミーデータの生成方法 | 要件定義書は `rag:seed-samples` が Claude API で生成してコミット。CLAUDE.md は「Seeder / Faker ja_JP」。どちらも架空データだが、RS-003 着手前に揃える |
+| A-01 | ダミーデータの生成方法 | **決定（RS-003）**: Claude API で生成してコミットする |
 | A-02 | Recall@k の閾値を check.sh に入れるか | RS-007 で決める |

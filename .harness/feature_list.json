@@ -72,9 +72,14 @@
       "depends_on": [
         "RS-002"
       ],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "check.sh: GATE: PASS（2026-11-12、91 tests / 613 assertions）",
+        "reviewer: APPROVE（low 5件は progress.md の残課題へ）",
+        "開発DB: rag:seed-samples で30件生成 → rag:ingest で 50文書・371チャンク、embedding NULL 0、候補者20名すべて履歴書1・職務経歴書1、再実行は50件スキップで件数不変",
+        "テスト: IngestorTest（コミット済みサンプルの取り込みを含む）・OpenAiEmbedderTest・SampleGeneratorTest。Http::fake + Http::preventStrayRequests でネットワーク不使用"
+      ]
     },
     {
       "id": "RS-004",

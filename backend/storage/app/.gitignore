@@ -2,3 +2,7 @@
 !private/
 !public/
 !.gitignore
+# ダミーデータ（rag:seed-samples の生成物）と評価データはコミットする
+!samples/
+!samples/**
+!eval.json
