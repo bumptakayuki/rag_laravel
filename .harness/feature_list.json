@@ -1,122 +1,145 @@
 {
-  "rules": "passes=true は status=done かつ evidence（check.sh の結果と reviewer の APPROVE）が揃った場合だけ。1セッション1タスク。",
+  "rules": "passes=true は status=done かつ evidence（check.sh の結果と reviewer の APPROVE）が揃った場合だけ。1セッション1タスク。タスクは要件定義書 第8章の実装ステップに対応する。各タスク完了後は動作確認方法を報告して止まり、開発者の確認を待つ。",
+  "source": "簡易RAGアプリ 要件定義書（Laravel × PostgreSQL＋pgvector） https://claude.ai/artifact/8SHGJaz6vGQhBTxX14cfsk",
   "features": [
     {
       "id": "RS-001",
-      "name": "Laravel 雛形と品質ゲートの有効化",
-      "goal": "backend/ に Laravel を作成し、check.sh が実テストを実行して GATE: PASS になる",
+      "name": "環境構築",
+      "goal": "Docker Compose（app: PHP 8.5 / db: pgvector 版 PostgreSQL）で Laravel を動かし、pgvector 拡張を有効化する",
       "done_when": [
-        "php -v が正常に動く（ローカル PHP の修復を含む）",
-        "backend/ に Laravel が作成され、php artisan test が通る",
-        "pint --test が通る",
+        "docker compose up -d で app と db が起動し、http://localhost:18080 が表示される",
+        "最初のマイグレーションで vector 拡張が有効になり、SELECT extversion FROM pg_extension WHERE extname = 'vector' が値を返す（開発 DB rag とテスト DB rag_test）",
+        "php artisan test と pint --test がコンテナ内で通る",
         "bash scripts/check.sh が GATE: PASS で終わる"
       ],
-      "approval_required": ["PHP の再インストール・brew 操作", "composer create-project"],
+      "approval_required": [
+        "Docker ランタイムの導入（brew）",
+        "composer create-project",
+        "開発 DB への php artisan migrate"
+      ],
       "depends_on": [],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "2026-11-12 check.sh: GATE: PASS（harness / gitleaks / php artisan test 5件 / pint --test / no skipped tests）",
+        "psql: rag・rag_test とも SELECT extversion FROM pg_extension WHERE extname='vector' → 0.8.7",
+        "docker compose ps: app Up (18080->8000)、db Up (healthy)。ExampleTest で GET / = 200",
+        "TestCase の接続先ガードを実証: DB_DATABASE=rag を注入するとテストが RefreshDatabase 前に中止し、開発 DB の probe テーブルが残った",
+        "reviewer: 初回 REJECT（テストが開発 DB を消す問題の再発防止が不十分）→ 修正後 APPROVE",
+        "2026-11-12 開発者がブラウザで http://localhost:18080 の表示を確認（当初の 8080 は Docker Desktop と衝突して 404 だったため 18080 に変更）"
+      ]
     },
     {
       "id": "RS-002",
-      "name": "候補者テーブルと架空データ",
-      "goal": "candidates テーブル（氏名・職種・スキル・経験年数・自己紹介文）と、架空データの Seeder を作る",
+      "name": "テーブルと分割",
+      "goal": "candidates / documents / chunks / queries のマイグレーションと Model、Chunker とその単体テストを作る",
       "done_when": [
-        "migration と Candidate Model がある",
-        "Seeder が Faker ja_JP で架空の候補者を作る",
-        "Feature テストで Seeder 実行後のレコード数と必須項目を確認している"
+        "要件定義書 第3章のカラム・制約（documents の content_hash unique、candidate_id+type unique、chunks.embedding vector(次元数)）がある",
+        "Chunker が段落基本・上限文字数・オーバーラップ・小段落結合・見出し→metadata.section で分割する（mb_ 系関数）",
+        "Chunker の単体テスト（境界値・オーバーラップ・日本語）が通る"
       ],
-      "approval_required": ["DB の種類の決定（docs/architecture.md の未決事項 A-01）"],
-      "depends_on": ["RS-001"],
+      "approval_required": [
+        "composer require pgvector/pgvector",
+        "開発 DB への php artisan migrate"
+      ],
+      "depends_on": [
+        "RS-001"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []
     },
     {
       "id": "RS-003",
-      "name": "Embedding プロバイダーの抽象化",
-      "goal": "EmbeddingProvider インターフェースと、テスト用の決定的な FakeEmbeddingProvider を作る",
+      "name": "取り込み",
+      "goal": "Embedder（OpenAI 実装）・Ingestor・rag:seed-samples・rag:ingest・rag:chunks を作る",
       "done_when": [
-        "インターフェース経由で実装を切り替えられる（config で指定）",
-        "Fake は同じ入力に同じベクトルを返し、ネットワークを使わない",
-        "ユニットテストで次元数と決定性を確認している"
+        "サンプル候補者20名（40文書）と求人票が取り込まれ、全チャンクの embedding が NULL でない",
+        "候補者ごとに履歴書・職務経歴書が1件ずつ紐づく。再実行しても重複しない",
+        "Http::fake() で取り込みのテストをしている（テストはネットワークを使わない）"
       ],
-      "approval_required": ["実プロバイダー（外部 API）の選定と接続"],
-      "depends_on": ["RS-001"],
+      "approval_required": [
+        "OpenAI Embedding API への送信",
+        "Claude API によるダミーデータ生成（架空データのみ）"
+      ],
+      "depends_on": [
+        "RS-002"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []
     },
     {
       "id": "RS-004",
-      "name": "候補者の Embedding 生成",
-      "goal": "artisan コマンドで候補者テキストを Embedding 化して保存する",
+      "name": "検索",
+      "goal": "Retriever（生SQL）・CandidateRanker・rag:search を作る",
       "done_when": [
-        "php artisan candidates:embed で未生成の候補者だけ処理される",
-        "再実行しても重複しない",
-        "Fake プロバイダーで Feature テストしている"
+        "「PHPの経験がある人」で PHP 経験のある候補者が上位に並び、ヒットチャンクが文書種別・類似度つきで出る",
+        "CandidateRanker の単体テスト（max / avg3 / max_plus_hits）が通る"
       ],
-      "approval_required": [],
-      "depends_on": ["RS-002", "RS-003"],
+      "approval_required": [
+        "OpenAI Embedding API への送信"
+      ],
+      "depends_on": [
+        "RS-003"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []
     },
     {
       "id": "RS-005",
-      "name": "ベクトル検索（top-k）",
-      "goal": "クエリ文を Embedding 化し、類似度上位 k 件の候補者を返すサービスを作る",
+      "name": "回答生成",
+      "goal": "PromptBuilder・ClaudeClient・RagPipeline・rag:ask と queries への記録を作る",
       "done_when": [
-        "類似度の降順で k 件返る",
-        "候補者0件・k が件数より大きい場合も正しく動く",
-        "固定ベクトルのテストで順位を確認している"
+        "回答に [番号] の根拠がつき、資料にない質問には「資料からはわかりません」と返る",
+        "実行ごとに queries に記録される",
+        "Http::fake() でテストしている"
       ],
-      "approval_required": ["ベクトル検索方式の決定（A-02）"],
-      "depends_on": ["RS-004"],
+      "approval_required": [
+        "Claude API への送信"
+      ],
+      "depends_on": [
+        "RS-004"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []
     },
     {
       "id": "RS-006",
-      "name": "検索画面",
-      "goal": "検索フォームと結果一覧（候補者名・職種・スコア）の画面を作る",
+      "name": "画面",
+      "goal": "質問画面（/）・候補者詳細画面（/candidates/{id}）・履歴画面（/history）を Blade + Tailwind CDN で作る",
       "done_when": [
-        "GET /search?q=... で結果が表示される",
-        "空クエリはバリデーションエラーになる",
-        "Feature テストで表示とバリデーションを確認している"
+        "要件定義書 第4.4章の表示項目がすべて出る",
+        "候補者カードを展開するとヒットチャンクが文書別に並び、候補者詳細の該当箇所へ移動できる",
+        "履歴から再実行できる",
+        "Feature テストで表示を確認している"
       ],
       "approval_required": [],
-      "depends_on": ["RS-005"],
+      "depends_on": [
+        "RS-005"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []
     },
     {
       "id": "RS-007",
-      "name": "LLM による回答生成（根拠付き）",
-      "goal": "検索上位の候補者を文脈として LLM が推薦理由を返す。回答には根拠の候補者 ID を必ず含める",
+      "name": "実験機能",
+      "goal": "検索のみモード・RAGなし比較・チャンク設定比較・rag:eval・スコア切替・rag:index / rag:explain・rag:seed-random、結合テスト、README",
       "done_when": [
-        "LlmProvider インターフェースと Fake 実装がある",
-        "文脈にない候補者 ID を含む回答は破棄される",
-        "Fake プロバイダーで Feature テストしている"
+        "rag:eval が Recall@k と平均順位を表示する",
+        "rag:index の前後で rag:explain の実行計画が変わることを確認できる",
+        "Http::fake() による取り込み〜回答の結合テストが通る",
+        "README にセットアップ手順と読む順番がある"
       ],
-      "approval_required": ["外部 LLM への送信（架空データであっても初回は承認）"],
-      "depends_on": ["RS-005"],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
-    },
-    {
-      "id": "RS-008",
-      "name": "検索品質の固定評価",
-      "goal": "架空データの固定クエリと正解候補で recall@k を測り、check.sh に組み込む",
-      "done_when": [
-        "評価データが evals/ にある（架空データのみ）",
-        "recall@5 が閾値未満なら check.sh が FAIL になる"
+      "approval_required": [
+        "Recall@k を check.sh に組み込む場合の閾値"
       ],
-      "approval_required": ["閾値の決定"],
-      "depends_on": ["RS-005"],
+      "depends_on": [
+        "RS-006"
+      ],
       "status": "pending",
       "passes": false,
       "evidence": []

@@ -57,12 +57,19 @@ if [ ! -f backend/artisan ]; then
   finish "NOT CONFIGURED"; exit 2
 fi
 
-cd backend
-step "app: php artisan test" php artisan test
-step "app: pint --test"      ./vendor/bin/pint --test
-if [ -x ./vendor/bin/phpstan ]; then
-  step "app: phpstan" ./vendor/bin/phpstan analyse --no-progress
+# PHP は app コンテナで実行する（ローカル PHP は使わない）。コンテナが動いていなければ FAIL
+export PATH="$HOME/.orbstack/bin:$PATH"
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx app; then
+  results+=("FAIL  app: app コンテナが起動していない（docker compose up -d）")
+  finish "FAIL"; exit 1
 fi
+app() { docker compose exec -T app "$@"; }
+step "app: php artisan test" app php artisan test
+step "app: pint --test"      app ./vendor/bin/pint --test
+if [ -x backend/vendor/bin/phpstan ]; then
+  step "app: phpstan" app ./vendor/bin/phpstan analyse --no-progress
+fi
+cd backend
 if [ -f package.json ] && grep -q '"build"' package.json; then
   step "app: npm run build" npm run build --silent
 fi
