@@ -87,6 +87,8 @@ class QueryLogRestorer
             target: $retrieved['target'] ?? null,
             embedding: $retrieved['embedding'] ?? null,
             missingChunks: $missing,
+            searchOnly: (bool) ($params['search_only'] ?? false),
+            answerWithoutRag: $log->answer_without_rag,
         );
     }
 

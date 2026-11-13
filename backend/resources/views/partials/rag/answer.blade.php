@@ -12,7 +12,21 @@
         <h2 class="text-base font-bold">回答</h2>
         <span class="text-xs text-[#5B6470]">{{ count($result->ranking->groups) }} 名・資料 {{ count($result->prompt->sources) }} 件を参照</span>
     </div>
-    <p class="whitespace-pre-line text-sm leading-relaxed">{{ $result->answer }}</p>
+    @if ($result->answerWithoutRag !== null)
+        {{-- RAGなし比較（要件定義書 第5章）: 資料ありの回答と、資料なしで聞いた回答を並べる --}}
+        <div class="grid gap-3 md:grid-cols-2">
+            <div>
+                <h3 class="mb-1 text-xs font-semibold text-[#1A3F8F]">RAGあり（検索した資料を根拠に回答）</h3>
+                <p class="whitespace-pre-line text-sm leading-relaxed">{{ $result->answer }}</p>
+            </div>
+            <div class="rounded-md bg-[#F6F7F9] p-3" data-testid="answer-without-rag">
+                <h3 class="mb-1 text-xs font-semibold text-[#5B6470]">RAGなし（資料を渡さずに質問だけを送った回答）</h3>
+                <p class="whitespace-pre-line text-sm leading-relaxed">{{ $result->answerWithoutRag }}</p>
+            </div>
+        </div>
+    @else
+        <p class="whitespace-pre-line text-sm leading-relaxed">{{ $result->answer }}</p>
+    @endif
 
     @if ($result->unknownCitations !== [])
         <p class="mt-3 rounded-md bg-[#FFF8E1] p-2 text-xs text-[#6B4A00]">

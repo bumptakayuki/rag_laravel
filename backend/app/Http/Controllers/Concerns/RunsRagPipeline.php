@@ -28,6 +28,7 @@ trait RunsRagPipeline
     private const STAGE_LABELS = [
         'embed' => '質問のベクトル化（OpenAI）',
         'generate' => '回答生成（Claude）',
+        'generate_without_rag' => 'RAGなし回答の生成（Claude）',
     ];
 
     /**

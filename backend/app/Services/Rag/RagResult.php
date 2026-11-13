@@ -22,6 +22,8 @@ final readonly class RagResult
      * @param  array{documents: int, chunks: int}|null  $target  検索の対象になった文書数・チャンク数（古い記録には無い）
      * @param  array{dimensions: int, head: list<float>}|null  $embedding  質問ベクトルの次元数と先頭3つ（画面の「検索の流れ」用）
      * @param  int  $missingChunks  履歴から復元したとき、取り込み直しで消えていたチャンクの数
+     * @param  bool  $searchOnly  「検索だけ実行」した結果（Claude を呼んでいない。prompt / answer は null）
+     * @param  string|null  $answerWithoutRag  「RAGなし比較」で、資料なしで Claude に聞いた回答
      */
     public function __construct(
         public ?QueryLog $queryLog,
@@ -37,6 +39,8 @@ final readonly class RagResult
         public ?array $target = null,
         public ?array $embedding = null,
         public int $missingChunks = 0,
+        public bool $searchOnly = false,
+        public ?string $answerWithoutRag = null,
     ) {}
 
     /** 求人票を探した結果か（ランキングのグループが求人票） */

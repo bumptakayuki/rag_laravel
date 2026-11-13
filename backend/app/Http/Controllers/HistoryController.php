@@ -71,6 +71,9 @@ class HistoryController extends Controller
                     $queryLog->question,
                     $options(),
                     (int) ($params['chunks_per_candidate'] ?? config('rag.answer.chunks_per_candidate')),
+                    // 実験の指定（検索だけ / RAGなし比較）も同じにする
+                    (bool) ($params['search_only'] ?? false),
+                    (bool) ($params['compare_without_rag'] ?? false),
                 ),
             },
             // 記録に失敗したときは質問画面の形でその場に出す
@@ -82,6 +85,7 @@ class HistoryController extends Controller
                     'min_similarity' => $result->options->minSimilarity,
                     'doc_type' => $result->options->documentType ?? '',
                     'score' => $result->options->scoreMethod,
+                    'compare_without_rag' => $result->answerWithoutRag !== null,
                 ],
                 ...$this->resultViewData($result, $retriever),
             ]),

@@ -23,7 +23,7 @@ class QueryLog extends Model
 
     protected $table = 'queries';
 
-    protected $fillable = ['mode', 'source_document_id', 'question', 'params', 'retrieved', 'prompt', 'answer', 'latency_ms'];
+    protected $fillable = ['mode', 'source_document_id', 'question', 'params', 'retrieved', 'prompt', 'answer', 'answer_without_rag', 'latency_ms'];
 
     protected function casts(): array
     {
