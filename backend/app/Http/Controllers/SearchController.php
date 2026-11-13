@@ -26,6 +26,10 @@ use Illuminate\View\View;
  *                       候補者モード = 検索 → 回答生成（ask）、求人票モード = 求人票の検索だけ（searchJobs）
  *   GET  /?query={id}   記録1件を表示する（実行直後・履歴の詳細）。フォームにはその時の条件を入れる
  *
+ * 実験機能（要件定義書 第5章。RS-007）:
+ * - 「検索だけ実行」ボタン（action=search）: Claude を呼ばずに検索結果と類似度だけを出す
+ * - 「RAGなし比較」チェックボックス（compare_without_rag）: 同じ質問を資料なしで Claude に聞いた回答を並べる
+ *
  * RS-004b では GET /?q=... で検索していたが、回答生成（有料の API）と記録が入ったので POST にした。
  */
 class SearchController extends Controller
@@ -52,7 +56,7 @@ class SearchController extends Controller
     public function run(Request $request, RagPipeline $pipeline, Retriever $retriever): RedirectResponse|View
     {
         // ?q[]=x のような配列は '' にする（検証で弾き、画面に出すときのエスケープで落ちないように）
-        $input = collect(['scope', 'q', 'top_k', 'min_similarity', 'doc_type', 'score'])
+        $input = collect(['scope', 'q', 'top_k', 'min_similarity', 'doc_type', 'score', 'action', 'compare_without_rag'])
             ->mapWithKeys(fn (string $key) => [$key => is_array($v = $request->input($key)) ? '' : $v])
             ->all();
 
@@ -66,11 +70,14 @@ class SearchController extends Controller
             'document_type' => ($form['doc_type'] ?? null) ?: null,
         ]);
         $isJob = $form['scope'] === Retriever::SCOPE_JOB;
+        $searchOnly = ($form['action'] ?? null) === 'search';
+        // 「検索だけ」のときは Claude を呼ばないので、RAGなし比較は付けない
+        $compare = ! $searchOnly && ! empty($form['compare_without_rag']);
 
         return $this->runPipeline(
             fn () => $isJob
                 ? $pipeline->searchJobs($form['q'], $options)
-                : $pipeline->ask($form['q'], $options, (int) config('rag.answer.chunks_per_candidate')),
+                : $pipeline->ask($form['q'], $options, (int) config('rag.answer.chunks_per_candidate'), $searchOnly, $compare),
             fn (RagResult $result) => view('search', [
                 'form' => $input,
                 ...$this->resultViewData($result, $retriever),
@@ -99,6 +106,7 @@ class SearchController extends Controller
             'min_similarity' => $params['min_similarity'] ?? $defaults['min_similarity'],
             'doc_type' => $params['document_type'] ?? '',
             'score' => $params['score'] ?? $defaults['candidate_score'],
+            'compare_without_rag' => (bool) ($params['compare_without_rag'] ?? false),
         ];
 
         // 戻ってきた入力が配列（?q[]=x）なら '' にする（エスケープで落ちないように）
@@ -114,6 +122,8 @@ class SearchController extends Controller
             'min_similarity' => ['required', 'numeric', 'min:-1', 'max:1'],
             'doc_type' => ['nullable', Rule::in([Document::TYPE_RESUME, Document::TYPE_CAREER_HISTORY])],
             'score' => ['required', Rule::in(GroupRanker::SCORE_METHODS)],
+            'action' => ['nullable', Rule::in(['ask', 'search'])],
+            'compare_without_rag' => ['nullable', 'boolean'],
         ], [
             // lang ファイルを入れていないので、この画面で使う規則のメッセージだけ日本語で書く
             'required' => ':attribute を入力してください。',
@@ -123,10 +133,12 @@ class SearchController extends Controller
             'integer' => ':attribute は整数で入力してください。',
             'numeric' => ':attribute は数値で入力してください。',
             'in' => ':attribute の値が正しくありません。',
+            'boolean' => ':attribute の値が正しくありません。',
             'q.max' => ':attribute は :max 文字以内にしてください。',
         ], [
             'scope' => '検索対象', 'q' => '質問', 'top_k' => '表示する件数',
             'min_similarity' => '類似度の下限', 'doc_type' => '検索する文書', 'score' => 'スコアの決め方',
+            'action' => '実行の種類', 'compare_without_rag' => 'RAGなし比較',
         ]);
         // 求人票には文書種別の絞り込みがない（Retriever も受け付けない）
         $validator->after(function ($v) use ($input) {

@@ -35,44 +35,78 @@ class RagPipeline
 
     /**
      * 質問から候補者を探し、資料（ヒットしたチャンク）だけを根拠に回答を生成する。
+     *
+     * 学習用の実験（要件定義書 第5章。RS-007）:
+     * - $searchOnly: 検索だけ実行する。Claude を呼ばず、プロンプトも作らない（answer は null で記録する）
+     * - $compareWithoutRag: 同じ質問を資料なしで Claude に送った回答も作り、answer_without_rag に記録する
      */
-    public function ask(string $question, SearchOptions $options, int $chunksPerCandidate): RagResult
-    {
+    public function ask(
+        string $question,
+        SearchOptions $options,
+        int $chunksPerCandidate,
+        bool $searchOnly = false,
+        bool $compareWithoutRag = false,
+    ): RagResult {
         if (trim($question) === '') {
             throw new InvalidArgumentException('質問が空');
+        }
+        if ($searchOnly && $compareWithoutRag) {
+            throw new InvalidArgumentException('検索だけ実行するときは、RAGなし比較（Claude の呼び出し）はできない');
         }
         $builder = new PromptBuilder($chunksPerCandidate);
 
         [$chunks, $ranking, $latency, $info] = $this->search($question, $options, Retriever::SCOPE_CANDIDATE);
 
-        $started = hrtime(true);
-        $prompt = $builder->build($question, $ranking, $this->candidateLabels($ranking));
-        $latency['prompt'] = self::elapsedMs($started);
+        $prompt = null;
+        $answer = null;
+        $answerWithoutRag = null;
+        $unknown = [];
+        if (! $searchOnly) {
+            $started = hrtime(true);
+            $prompt = $builder->build($question, $ranking, $this->candidateLabels($ranking));
+            $latency['prompt'] = self::elapsedMs($started);
 
-        // 資料が1件もなければ、Claude に聞いても答えは決まっている。API を呼ばずに決まり文句を返す
-        $started = hrtime(true);
-        $answer = $prompt->sources === []
-            ? PromptBuilder::NO_ANSWER
-            : $this->callExternal('generate', fn () => $this->claude->generateText($prompt->system, $prompt->user));
-        $latency['generate'] = self::elapsedMs($started);
+            // 資料が1件もなければ、Claude に聞いても答えは決まっている。API を呼ばずに決まり文句を返す
+            $started = hrtime(true);
+            $answer = $prompt->sources === []
+                ? PromptBuilder::NO_ANSWER
+                : $this->callExternal('generate', fn () => $this->claude->generateText($prompt->system, $prompt->user));
+            $latency['generate'] = self::elapsedMs($started);
 
-        $unknown = array_values(array_filter(Prompt::citedNumbers($answer), fn (int $n) => $prompt->source($n) === null));
+            $unknown = array_values(array_filter(Prompt::citedNumbers($answer), fn (int $n) => $prompt->source($n) === null));
+        }
+
+        if ($compareWithoutRag) {
+            // 資料を渡さず、質問だけを送る（比較用）。資料が0件でも呼ぶ（「資料なしなら何と答えるか」を見るため）
+            $started = hrtime(true);
+            $answerWithoutRag = $this->callExternal(
+                'generate_without_rag',
+                fn () => $this->claude->generateText(PromptBuilder::SYSTEM_WITHOUT_RAG, $question),
+            );
+            $latency['generate_without_rag'] = self::elapsedMs($started);
+        }
+
+        $params = [...$options->toArray(), 'chunks_per_candidate' => $chunksPerCandidate];
+        // 実験の指定は付けたときだけ記録する（それ以前の記録と同じ形を保つ）
+        $params += array_filter(['search_only' => $searchOnly, 'compare_without_rag' => $compareWithoutRag]);
 
         [$log, $recordError] = $this->record(
             mode: QueryLog::MODE_QUESTION,
             question: $question,
-            params: [...$options->toArray(), 'chunks_per_candidate' => $chunksPerCandidate],
+            params: $params,
             chunks: $chunks,
             ranking: $ranking,
             latency: $latency,
             info: $info,
             prompt: $prompt,
             answer: $answer,
+            answerWithoutRag: $answerWithoutRag,
         );
 
         return new RagResult(
             $log, $question, $options, $ranking, $prompt, $answer, $unknown, $latency, $recordError,
             mode: QueryLog::MODE_QUESTION, target: $info['target'], embedding: $info['embedding'],
+            searchOnly: $searchOnly, answerWithoutRag: $answerWithoutRag,
         );
     }
 
@@ -215,6 +249,7 @@ class RagPipeline
         ?Prompt $prompt = null,
         ?string $answer = null,
         ?int $sourceDocumentId = null,
+        ?string $answerWithoutRag = null,
     ): array {
         $latency['total'] = array_sum($latency);
 
@@ -260,6 +295,7 @@ class RagPipeline
                 'retrieved' => $retrieved,
                 'prompt' => $prompt?->fullText(),
                 'answer' => $answer,
+                'answer_without_rag' => $answerWithoutRag,
                 'latency_ms' => array_map(fn (float $ms) => round($ms, 2), $latency),
             ]));
         } catch (QueryException $e) {

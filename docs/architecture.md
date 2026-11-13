@@ -14,6 +14,7 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
               → CandidateRanker（候補者ごとに集約・top_k）
               → PromptBuilder → ClaudeClient → 回答 [番号]
               → queries に記録
+評価:     eval.json → Embedder → Retriever → CandidateRanker → Recall@k・平均順位（rag:eval）
 ```
 
 ## 環境（RS-001 で決定）
@@ -126,6 +127,29 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 - 実行に時間がかかる POST（質問画面・求人票詳細・履歴の再実行）は、フォームに `data-loading="表示する文"` を付ける。送信するとレイアウトの JavaScript が送信ボタンを押せなくし（二重送信で API を2回呼ばない）、スピナーと文を出す。「戻る」でキャッシュから表示されたときは元に戻す（pageshow）
 - テストは `tests/Support/FakesRagApis`（埋め込み・Claude の偽装とデータ作成）を共有する
 
+## 実験機能（RS-007 で決定）
+- 範囲は要件定義書 第5章の一式と、結合テスト・README。チャンク設定の比較（`rag:ingest --chunk-size --overlap` と `chunks.metadata`）、スコアの切り替え、求人マッチングの検索文の切り替えは RS-003〜006 でできていた
+- 質問画面の「検索だけ実行」: ボタンの `action=search`。`RagPipeline::ask(..., searchOnly: true)` で Claude を呼ばず、プロンプトも作らない。`mode = question`・`answer = NULL`・`params.search_only = true` で記録する（mode の値は増やさない）
+  - 送信中にボタンを押せなくすると、押したボタンの name / value が送られない（HTML の仕様）。レイアウトの JavaScript で押したボタンの値を hidden に写してから押せなくする。ボタンごとの `data-loading` で表示する文も変えられる
+- 「RAGなし比較」: チェックボックス `compare_without_rag`。同じ質問を `PromptBuilder::SYSTEM_WITHOUT_RAG`（資料の指示なし）で Claude に送り、`queries.answer_without_rag`（migration `2026_11_13_000002`、text・NULL 可）に記録する。列を足したのは、画面が記録から結果を組み立て直すため（開発者の判断）。工程名は `generate_without_rag`
+  - 「検索だけ実行」のときは Claude を呼ばないので、チェックしていても無視する。履歴の再実行は両方の指定を引き継ぐ
+  - 資料が0件でも RAGなしの回答は作る（「資料なしなら何と答えるか」を見るため）
+- `rag:eval`（`Evaluator`）: 全問の質問を1回の埋め込み呼び出しでベクトル化し、検索だけを行う。集約は top_k で区切らず全員を並べて正解者の順位を出す
+  - Recall@k は質問ごとの「上位 k 名に入った正解者 / 正解者」を、全体は質問ごとの値の平均（1問を同じ重さにする）。参考に正解者全体での値も出す
+  - 平均順位は順位が付いた正解者だけの平均。1段目（chunk_limit 件）に1件もヒットしなかった正解者は「圏外」として数だけ出す
+  - k は `--k` → eval.json の `k` → `RAG_TOP_K` の順
+- `rag:index create|drop|status`（`VectorIndex`）: `chunks_embedding_hnsw_idx`（`hnsw (embedding vector_cosine_ops)`）を作る・消す。作る・消すを繰り返す実験用なので migration にはしない。作った後は `ANALYZE chunks`
+- `rag:explain`（`Retriever::explain()`）: 検索と同じ SQL を `EXPLAIN (ANALYZE, BUFFERS)` する。`--random` で API を使わないランダムなベクトル、`--set=名前=値` でその1回だけ planner の設定を変える
+  - 設定は `set_config(名前, 値, true)`（= SET LOCAL）。トランザクションは確定せず必ず巻き戻す。呼び出し元がトランザクション中だと `DB::transaction` はセーブポイントになり、セーブポイントを確定しても SET LOCAL は外側が終わるまで残るため（テストで見つけた）
+  - 設定名は SQL に直接書くので `[a-z_][a-z0-9_.]*` だけ受け付ける。値はバインドする
+  - 実行計画の質問ベクトルは `'[…1536次元…]'::vector` に縮めて表示する
+- `rag:seed-random {count} | --purge`（`RandomChunkSeeder`）: ベクトルは PostgreSQL の `random()` で DB の中で作る（PHP で作って送ると SQL だけで数百 MB になるため）。実験用の候補者 `RANDOM` の職務経歴書1件にぶら下げ、`chunks.metadata.random = true` を付ける。`--purge` は候補者ごと消す（cascade）。1回の上限 200,000 件
+- 実測（rag_test。ランダムなチャンク約5000件、m=4・ef_construction=16 の索引）: 索引なしは Seq Scan → Sort、索引を作ると planner が自分で Index Scan を選び、返る行数は LIMIT 50 に対して 40（`hnsw.ef_search` の既定）。`--set=hnsw.ef_search=100` で 50 件に戻る。チャンクが約1000〜3000件だと、索引があっても Seq Scan のまま
+  - 開発 DB（実データ 371 + ランダム 30,000 件、m=16・ef_construction=64。作成 約340秒・237 MB）では、既定の ef_search=40 のまま索引を作っても planner は Seq Scan を選んだ（LIMIT を 5〜50 にしても同じ）。`--set=hnsw.ef_search=60` 以上で Index Scan になり、約 480 ms → 約 18 ms。索引の前後の比較は、同じ `rag:explain --random --set=hnsw.ef_search=60` で行う（README）
+  - つまり、索引の効き方は件数・索引のパラメータ・ef_search・LIMIT の組み合わせで変わる。索引ありで `RAG_CHUNK_LIMIT` が ef_search より大きいと、1段目のチャンクが減るか、索引が使われない。Retriever は ef_search を変えていない（索引は初期状態で作らない方針のため。学習の題材として残す）
+- 結合テスト `tests/Feature/EndToEndTest`: 一時ディレクトリに Markdown を置き、`rag:ingest` → `rag:search` → `rag:ask` → 画面の表示までを通す。埋め込みは「PHP / Laravel を含む文は軸 0、それ以外は軸 1」の単位ベクトルにして結果を決め打ちで確かめる
+- Recall@k は `check.sh` に入れない（実 API が必要なため。開発者の判断。A-02）
+
 ## 方針
 - LangChain 等は使わず、外部 API は Laravel の Http クライアントで直接呼ぶ
 - ベクトル検索は生SQL（pgvector の演算子）。類似度を画面で見せる
@@ -137,4 +161,4 @@ RAG の仕組みを実装しながら理解するための学習用アプリ。�
 | ID | 内容 | メモ |
 | --- | --- | --- |
 | A-01 | ダミーデータの生成方法 | **決定（RS-003）**: Claude API で生成してコミットする |
-| A-02 | Recall@k の閾値を check.sh に入れるか | RS-007 で決める |
+| A-02 | Recall@k の閾値を check.sh に入れるか | **決定（RS-007）**: 入れない（rag:eval は実 API が必要。手で実行して確かめる） |

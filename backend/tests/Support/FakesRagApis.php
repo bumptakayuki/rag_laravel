@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Http;
  * - 埋め込み（OpenAI）は、どの文も軸 0 の単位ベクトルを返す。チャンクは cosθ·軸0 + sinθ·軸1 にして、
  *   質問との類似度をちょうど cosθ にする（SearchTest・AskTest と同じ作り方）
  * - 回答生成（Anthropic）は $claudeAnswer を返す。送られたリクエストは $claudeRequests に残す
- * - $embeddingFails / $claudeFails を true にすると 400 を返す（再試行しないエラー）
+ * - $embeddingFails / $claudeFails を true にすると 400 を返す（再試行しないエラー）。$claudeFailsFrom = n なら n 回目以降の Claude だけ
  */
 trait FakesRagApis
 {
@@ -29,6 +29,9 @@ trait FakesRagApis
     protected bool $embeddingFails = false;
 
     protected bool $claudeFails = false;
+
+    /** n 回目（1始まり）以降の Claude 呼び出しだけ失敗させる（RAGなし比較の2回目だけを失敗させるテスト用） */
+    protected ?int $claudeFailsFrom = null;
 
     protected function fakeRagApis(): void
     {
@@ -48,7 +51,9 @@ trait FakesRagApis
             'api.anthropic.com/*' => function (Request $request) {
                 $this->claudeRequests[] = $request;
 
-                return $this->claudeFails
+                $fails = $this->claudeFails || ($this->claudeFailsFrom !== null && count($this->claudeRequests) >= $this->claudeFailsFrom);
+
+                return $fails
                     ? Http::response(['type' => 'error', 'error' => ['type' => 'invalid_request_error', 'message' => 'bad request']], 400)
                     : Http::response([
                         'id' => 'msg_test',

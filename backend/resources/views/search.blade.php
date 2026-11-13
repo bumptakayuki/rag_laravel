@@ -74,10 +74,25 @@
             @error('score') <p class="mt-1 text-xs text-red-700">{{ $message }}</p> @enderror
         </fieldset>
 
-        <button type="submit" class="w-full rounded-md bg-[#2457C5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1A3F8F] focus:outline-none focus:ring-2 focus:ring-[#6F8FD8] disabled:cursor-wait disabled:opacity-70">
-            検索して回答する
-        </button>
-        <p class="text-xs text-[#5B6470]">質問を OpenAI でベクトル化して検索し、候補者のときはヒットした資料だけを根拠に Claude が回答します。求人票のときは検索だけです。</p>
+        <label class="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="compare_without_rag" value="1" class="mt-0.5" @checked($form['compare_without_rag'] ?? false)>
+            <span>
+                RAGなしの回答と比べる（候補者のみ）
+                <span class="block text-xs text-[#5B6470]">同じ質問を資料なしで Claude にも聞き、回答を並べて表示します（API を1回多く呼びます）</span>
+            </span>
+        </label>
+        @error('compare_without_rag') <p class="mt-1 text-xs text-red-700">{{ $message }}</p> @enderror
+
+        <div class="space-y-2">
+            <button type="submit" name="action" value="ask" class="w-full rounded-md bg-[#2457C5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1A3F8F] focus:outline-none focus:ring-2 focus:ring-[#6F8FD8] disabled:cursor-wait disabled:opacity-70">
+                検索して回答する
+            </button>
+            <button type="submit" name="action" value="search" data-loading="検索しています…" class="w-full rounded-md border border-[#2457C5] bg-white px-4 py-2 text-sm font-semibold text-[#2457C5] hover:bg-[#EAF0FC] focus:outline-none focus:ring-2 focus:ring-[#6F8FD8] disabled:cursor-wait disabled:opacity-70">
+                検索だけ実行（Claude を呼ばない）
+            </button>
+        </div>
+        @error('action') <p class="mt-1 text-xs text-red-700">{{ $message }}</p> @enderror
+        <p class="text-xs text-[#5B6470]">質問を OpenAI でベクトル化して検索し、候補者のときはヒットした資料だけを根拠に Claude が回答します。求人票のときは検索だけです。「検索だけ実行」は Claude を呼ばないので、API 費用を抑えて検索の精度を試せます。</p>
     </form>
 
     {{-- ===== 結果 ===== --}}
@@ -106,6 +121,10 @@
 
             @if ($result->prompt)
                 @include('partials.rag.answer')
+            @elseif ($result->searchOnly)
+                <p class="rounded-lg border border-dashed border-[#C9CED5] bg-white p-3 text-xs text-[#5B6470]" data-testid="search-only">
+                    検索だけ実行しました（Claude は呼んでいません）。回答を見るには「検索して回答する」を押してください。
+                </p>
             @endif
 
             @include('partials.rag.ranking')

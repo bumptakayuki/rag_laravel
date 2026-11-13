@@ -25,6 +25,9 @@
             $log->mode === QueryLog::MODE_JOB_SEARCH ? null : (Document::TYPE_LABELS[$p['document_type'] ?? ''] ?? '両方'),
             RagFormat::SCORE_LABELS[$p['score'] ?? ''] ?? null,
             JobController::SOURCE_LABELS[$p['source'] ?? ''] ?? null,
+            // 実験の指定（RS-007）
+            ! empty($p['search_only']) ? '検索のみ' : null,
+            ! empty($p['compare_without_rag']) ? 'RAGなし比較' : null,
         ]));
     };
 @endphp

@@ -25,6 +25,7 @@ final class RagFormat
         'rank' => '集約',
         'prompt' => 'プロンプト組み立て',
         'generate' => '回答生成',
+        'generate_without_rag' => 'RAGなし回答（比較）',
     ];
 
     /** 所要時間（ミリ秒）を「12 ms」「2.7 s」の形にする */

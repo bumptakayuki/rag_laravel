@@ -48,6 +48,12 @@ final readonly class SearchOptions
         );
     }
 
+    /** top_k だけを変えた設定（rag:eval で、上位 k 名に入らなかった人の順位も知るために全員を並べる） */
+    public function withTopK(int $topK): self
+    {
+        return new self($this->chunkLimit, $topK, $this->minSimilarity, $this->scoreMethod, $this->hitBonus, $this->hitBonusMaxHits, $this->documentType);
+    }
+
     /** 候補者単位でまとめる Ranker */
     public function candidateRanker(): CandidateRanker
     {

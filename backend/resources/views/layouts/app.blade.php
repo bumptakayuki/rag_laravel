@@ -65,10 +65,26 @@
             if (!form || event.defaultPrevented) return;
 
             form.setAttribute('aria-busy', 'true');
+
+            // 押せなくした（disabled の）ボタンの name / value は送信されない。
+            // ボタンで実行の種類を選ぶフォーム（質問画面の「検索だけ実行」）のため、押したボタンの値を hidden で送る
+            const submitter = event.submitter;
+            form.querySelectorAll('input[data-submitter-copy]').forEach((input) => input.remove());
+            if (submitter && submitter.name) {
+                const copy = document.createElement('input');
+                copy.type = 'hidden';
+                copy.name = submitter.name;
+                copy.value = submitter.value;
+                copy.dataset.submitterCopy = '';
+                form.appendChild(copy);
+            }
+            // 押したボタンに data-loading があれば、その文を出す（なければフォームの文）
+            const text = submitter?.dataset.loading || form.dataset.loading;
+
             form.querySelectorAll('button[type="submit"]').forEach((button) => {
                 button.dataset.originalLabel = button.innerHTML;
                 const label = template.content.cloneNode(true);
-                label.querySelector('[data-loading-text]').textContent = form.dataset.loading;
+                label.querySelector('[data-loading-text]').textContent = text;
                 button.replaceChildren(label);
                 button.disabled = true;
             });

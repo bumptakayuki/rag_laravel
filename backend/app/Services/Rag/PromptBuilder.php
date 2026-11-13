@@ -29,6 +29,14 @@ class PromptBuilder
         - 資料から答えがわからないときは「資料からはわかりません」とだけ答えてください。
         TEXT;
 
+    /**
+     * 「RAGなし比較」（要件定義書 第5章）で使う system。資料を渡さず、質問だけを送る。
+     * 資料ありの回答と並べて「検索で資料を渡すと何が変わるか」を見比べるためのもの
+     */
+    public const SYSTEM_WITHOUT_RAG = <<<'TEXT'
+        あなたは採用担当者を手伝うアシスタントです。ユーザーの質問に日本語で答えてください。
+        TEXT;
+
     public function __construct(private readonly int $chunksPerCandidate)
     {
         if ($chunksPerCandidate < 1) {

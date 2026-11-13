@@ -69,6 +69,46 @@ class Retriever
     }
 
     /**
+     * 検索と同じ SQL を EXPLAIN ANALYZE で実行し、実行計画の行を返す（rag:explain。要件定義書 第5章）。
+     *
+     * ANALYZE は実際に SQL を実行して、各段階の実行時間と行数を測る（SELECT なのでデータは変わらない）。
+     * $settings で、この1回だけ planner の設定を変えられる（例: enable_seqscan = off、hnsw.ef_search = 100）。
+     * 設定はトランザクションの中で SET LOCAL し、最後に巻き戻すので、終われば元に戻る
+     *
+     * @param  list<float>  $vector
+     * @param  array<string, string>  $settings  設定名 => 値
+     * @return list<string>
+     */
+    public function explain(array $vector, string $scope, int $limit, ?string $documentType = null, array $settings = []): array
+    {
+        [$where, $bindings] = $this->conditions($scope, $limit, $documentType);
+        $literal = '['.implode(',', array_map(fn ($v) => (string) (float) $v, $vector)).']';
+
+        foreach (array_keys($settings) as $name) {
+            // 設定名は SQL に直接書くので、英数字・ドット・下線だけ受け付ける（値はバインドする）
+            if (! preg_match('/\A[a-z_][a-z0-9_.]*\z/', $name)) {
+                throw new InvalidArgumentException("設定名が不正: {$name}");
+            }
+        }
+
+        // 設定を変えるのはこの1回だけにしたいので、トランザクションを開いて最後に必ず巻き戻す（SELECT なので失うものはない）。
+        // 確定（commit）にしないのは、呼び出し元がトランザクション中だと DB::transaction はセーブポイントになり、
+        // セーブポイントを確定しても SET LOCAL は外側のトランザクションが終わるまで残るため。巻き戻せばその場で元に戻る
+        DB::beginTransaction();
+        try {
+            foreach ($settings as $name => $value) {
+                // SET LOCAL はバインドできないので set_config(名前, 値, true) を使う（true = このトランザクションの間だけ）
+                DB::select('SELECT set_config(?, ?, true)', [$name, (string) $value]);
+            }
+            $rows = DB::select('EXPLAIN (ANALYZE, BUFFERS) '.$this->buildSql($where), [$literal, ...$bindings, $literal, $limit]);
+        } finally {
+            DB::rollBack();
+        }
+
+        return array_map(fn ($row) => (string) ((array) $row)['QUERY PLAN'], $rows);
+    }
+
+    /**
      * 実行する SQL を画面に見せる形で返す（? は :q / :type / :limit に置き換える）。
      */
     public function sqlForDisplay(string $scope, int $limit, ?string $documentType = null): string
