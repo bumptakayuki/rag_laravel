@@ -1,7 +1,7 @@
 # Development Progress
 
 ## Current task
-なし（RS-007 完了。全タスク done）
+なし（RS-008〜RS-010 完了。全タスク done）
 
 ## Completed
 - ハーネス最小構成を作成（CLAUDE.md / feature_list.json / progress.md / init.sh / check.sh / reviewer / settings.json）
@@ -15,6 +15,9 @@
 - RS-006 画面: 要件定義書 第4.4章の5画面（/・/candidates/{id}・/jobs・/jobs/{id}・/history）。質問画面を PRG にし QueryLogRestorer で記録から結果を復元、DocumentOutline で全文表示、候補者詳細のタブは JavaScript（開発者の指示）、時間のかかる POST にスピナーと二重送信防止（開発者の指示）、履歴の再実行。CandidatePageTest・JobPagesTest・HistoryPageTest・DocumentOutlineTest、SearchPageTest を POST に書き換え。GATE: PASS（223件）、reviewer APPROVE（1回目 REJECT＝gitleaks のみ → .env のキー削除後 2回目 APPROVE）。goal は開発者の承認で5画面に変更。開発者がブラウザで確認済み
 - RS-004b 簡易検索画面（開発者の指示で追加）: SearchController（GET /）、layouts/app・search の Blade（Tailwind CDN、<details> で展開）、Retriever::sqlForDisplay()。SearchPageTest（Feature）。開発者がブラウザで実データ確認。GATE: PASS（154件）、reviewer APPROVE（1回目 REJECT → 修正）
 - RS-007 実験機能: 質問画面の「検索だけ実行」（params.search_only、Claude を呼ばない）と「RAGなし比較」（queries.answer_without_rag。migration 2026_11_13_000002 を開発 DB に実行済み）、rag:eval（Evaluator）・rag:index（VectorIndex）・rag:explain（Retriever::explain）・rag:seed-random（RandomChunkSeeder）、結合テスト EndToEndTest、README。GATE: PASS（253件）、reviewer APPROVE（2回。どちらも APPROVE）。実データの rag:eval は Recall@5 1.000・平均順位 1.81
+- RS-008 候補者一覧（開発者の指示で追加）: GET /candidates（CandidateController::index）、コード順の全候補者、コード・名前の部分一致で絞り込み、文書の有無・チャンク数（Candidate::chunks() HasManyThrough）・取り込み日時。ナビに「候補者」を追加し、候補者詳細ではこちらを選択中にした（以前は「検索」）。CandidateListPageTest。GATE: PASS（260件）、reviewer APPROVE（1回目 REJECT → 修正）
+- RS-010 索引テストの安定化（開発者の指示で RS-009 より先に実施）: ExperimentCommandsTest の「planner が全件読みを選んだとき」のテストで、chunks が document_id の一意索引を使う Bitmap Heap Scan になり、ときどき落ちていた。--set に enable_bitmapscan=off を追加。全体実行10回・check.sh 3回すべて PASS。reviewer APPROVE
+- RS-009 候補者一覧のキーワード検索（開発者の指示で追加）: /candidates?q=&job=&skill=&keyword=。希望職種（「希望職種：」の行。職務経歴書→履歴書）はプルダウンから選び完全一致、スキルは「## スキル」欄に含まれる（一致した行を表示）、キーワードは全文に含まれる。大文字小文字は区別しない。条件はすべて満たすものだけ出す。判定は PHP（CandidateController::desiredJob / matchingSkillLines）。GATE: PASS（265件）、reviewer APPROVE（1回目 REJECT → RS-010 と修正）
 
 ## Decisions
 - タスクは要件定義書（https://claude.ai/artifact/8SHGJaz6vGQhBTxX14cfsk）第8章の7ステップに合わせた（旧 RS-001〜008 は廃止）
@@ -64,6 +67,9 @@
 - RS-007: 索引は開発 DB 3万件・既定 ef_search=40 では planner が使わない。比較は --set=hnsw.ef_search=60 で行う。Retriever は ef_search を変えない（学習の題材）
 - 詳細は docs/architecture.md「実験機能」
 
+- RS-009: 「完全一致で良い」の解釈は、希望職種=完全一致、スキル・キーワード=含む（開発者の判断。Java で JavaScript にも当たる）
+- RS-008〜RS-010 はまとめて1コミット（開発者の指示）
+
 ## Issues / Risks
 - [reviewer low] Ingestor: 2つの場所で内容を入れ替えた／移動した場合「同じ内容の文書が既にある」でスキップされ古いデータが残る（Ingestor.php:194-200）。その場合は --fresh で入れ直す。直すなら replace_id を sameContent 判定から外す
 - [reviewer low] Ingestor: --fresh で中身が空のディレクトリを指定すると全件削除して0件になる（警告のみ）。$fresh && sources 空なら中止する案
@@ -87,12 +93,17 @@
 - [reviewer low] eval.json の expected に存在しない候補者コード（打ち間違い）があっても、黙って「圏外」になる。直すなら警告を出す
 - [reviewer low] rag:seed-random が途中で失敗するとバッチ単位で部分的に残る。残っている間は候補者 RANDOM が画面に出ることがある → --purge で消す
 - [reviewer low] 「検索だけ実行」ボタンの JS（押したボタンの値を hidden に写す）は自動テストしていない（開発者がブラウザで確認済み）
+- [reviewer low] 候補者一覧はページングなしで全件出す。rag:seed-random の候補者 RANDOM も1行として出る（チャンク数は withCount なので重くはない）
+- [reviewer low] 候補者一覧は、職種の選択肢を作るために全候補者の文書の content をもう1回読み込む（1回のリクエストで2回）。候補者が増えたら選択肢をキャッシュするか、1回の読み込みにまとめる
+- [reviewer low] rag:explain は HNSW 索引を使わずに Bitmap Heap Scan（document_id の索引）になったときも「chunks を全件読み」と出す。直すなら Seq Scan かどうかを別に判定して文言を変える
+- [RS-010] 索引ありの側のテスト（test_rag_index_の前後で…、planner が Index Scan を選ぶ前提）は今回落ちていないが、上の reviewer medium の懸念は残る
 
 ## Next action
-- 全タスク完了。次に進めるなら progress の reviewer 指摘（索引テストの安定化など）から選ぶ
+- 開発者がブラウザで /candidates の絞り込みを確認する。push・PR 作成は指示を待つ
 
 ## Last check
-- check.sh: GATE: PASS（2026-11-13、253件）
+- check.sh: GATE: PASS（2026-11-13、265件。3回続けて PASS）
 
 ## Last commit
+- RS-008〜RS-010: feature/rs-008-candidate-list に1コミット（開発者の指示）。push・PR は未実施
 - RS-007: feature/rs-007-experiments をコミットし、PR でマージ（開発者の指示）
