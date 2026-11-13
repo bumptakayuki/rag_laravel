@@ -1,7 +1,13 @@
 # Development Progress
 
 ## Current task
-RS-005 回答生成（done。feature/rs-005-answer、未コミット）
+RS-006 画面（実装・テスト済み、完了待ち。feature/rs-006-ui にコミット済み）
+- 範囲は要件定義書 第4.4章の5画面。feature_list の goal（3画面）を5画面に直すのは開発者の承認待ち
+- 開発者の指示で、候補者詳細のタブ切り替えをサーバー（?tab=）から画面の JavaScript に移した（reviewer 未確認）
+- 開発者の指示で、時間のかかる POST（質問・候補者を探す・再実行）に実行中のスピナーと二重送信防止を付けた（form の data-loading。reviewer 未確認）
+- php artisan test 223 passed、pint PASS。check.sh は gitleaks だけ FAIL（backend/.env 71行目の OpenAI キー。コード起因ではない）
+- reviewer: 1回目 REJECT（理由は GATE: FAIL のみ。コード修正は不要との判定）。low 3件は対応済み（job_match を質問画面で開いたときフォームに入れない、丸めた類似度の注記、履歴のページ分けテスト）
+- 完了の条件: 開発者が backend/.env からキーを消す → check.sh で GATE: PASS → reviewer 再レビューで APPROVE → status done
 
 ## Completed
 - ハーネス最小構成を作成（CLAUDE.md / feature_list.json / progress.md / init.sh / check.sh / reviewer / settings.json）
@@ -49,6 +55,12 @@ RS-005 回答生成（done。feature/rs-005-answer、未コミット）
 - RS-005: 記録に失敗しても回答は表示してから FAILURE。理由は PDO メッセージの1行目だけ（SQL のバインド値や DETAIL の行の値＝プロンプト・回答の全文を出さない）
 - 詳細は docs/architecture.md「回答生成と記録」
 
+- RS-006: 実行は POST → 記録 → 結果の URL へリダイレクト。結果は記録から QueryLogRestorer で組み立て直す（履歴の詳細も同じ画面）。GET /?q= の検索はやめた
+- RS-006: 質問画面の求人票モードは回答なしで mode = job_search として記録。retrieved に target / embedding / jobs を追加
+- RS-006: 全文表示は DocumentOutline（見出し + 重なりを除いたチャンク本文）。候補者詳細のタブは画面の JavaScript で切り替える（サーバーは ?tab= を見ない。開発者の指示）
+- RS-006: 求人票詳細からの実行は設定の初期値で、選べるのは検索に使う部分だけ。適合理由は作らない（任意）
+- 詳細は docs/architecture.md「画面」
+
 ## Issues / Risks
 - [reviewer low] Ingestor: 2つの場所で内容を入れ替えた／移動した場合「同じ内容の文書が既にある」でスキップされ古いデータが残る（Ingestor.php:194-200）。その場合は --fresh で入れ直す。直すなら replace_id を sameContent 判定から外す
 - [reviewer low] Ingestor: --fresh で中身が空のディレクトリを指定すると全件削除して0件になる（警告のみ）。$fresh && sources 空なら中止する案
@@ -61,14 +73,13 @@ RS-005 回答生成（done。feature/rs-005-answer、未コミット）
 
 - [reviewer low] Retriever の ORDER BY が距離だけなので、同じ距離のチャンクの並びは決まらない。索引が使われるかは RS-007 の rag:explain で確かめる
 - [学習メモ → RS-006 / RS-007] 実データでは「PHPの経験がある人」で PHP 経験の一番長い C001 が5位（max は短いチャンク1つで決まる）。rag:match J01 を full にすると研修だけの C004 が1位（長文で平均化される）。人事の C008（用語だけ知っている）が上位に混ざる。C002（言い換え）は rag:match の上位5名に入らない
-- [reviewer low → RS-006] SearchController で Embedder が例外（API 障害など）を出すと 500 になる。RS-005 で RagPipeline はログに出して投げ直す形にした。画面では RS-006 で RagPipeline を使い、エラーを表示する
 - [reviewer low] ?doc_type[]=x は「絞り込みなし」で検索が進む（500 にはならない）。テストは足していない
 - [reviewer low] RagPipeline::record（214行目付近）の境界: QueryException に previous がないと自身のメッセージ（SQL とバインド値を含みうる）の1行目を使う／メッセージが空だと strtok が false を返し TypeError。どちらも通常は起きない。直すなら previous なしは固定文、`strtok(...) ?: '不明なエラー'`
 - [学習メモ → RS-007] 実データの「PHPの経験がある人は？」で、Laravel を1件だけ経験した C017 の資料も渡したが、回答には挙がらなかった（資料の選び方と回答の判断は別）
-- queries の jsonb はキーの順番を保たない。latency_ms を工程順に見せるには表示側で順番を決める（RS-006）
 
 ## Next action
-- 開発者が RS-005 の差分を確認 → 指示があればコミット・PR → RS-006（画面）
+- 開発者: 実データでブラウザ確認（キーがある間に）→ backend/.env からキーを消す → goal 変更の可否を回答
+- その後: check.sh → reviewer 再レビュー → feature_list を done に
 
 ## Last check
 - check.sh: GATE: PASS（2026-11-13、180件）

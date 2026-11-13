@@ -34,6 +34,26 @@ class QueryLog extends Model
         ];
     }
 
+    /** 画面に出すモードの名前 */
+    public const MODE_LABELS = [
+        self::MODE_QUESTION => '回答',
+        self::MODE_JOB_SEARCH => '求人票検索',
+        self::MODE_JOB_MATCH => '求人→候補者',
+    ];
+
+    /**
+     * この記録を表示する画面の URL。求人票から探した結果は求人票詳細、それ以外は質問画面。
+     * 元の求人票が消えていたら（取り込み直し）質問画面で表示する
+     */
+    public function resultUrl(): string
+    {
+        if ($this->mode === self::MODE_JOB_MATCH && $this->source_document_id !== null) {
+            return route('jobs.show', ['job' => $this->source_document_id, 'query' => $this->id]);
+        }
+
+        return route('search', ['query' => $this->id]);
+    }
+
     /** job_match のときの元の求人票 @return BelongsTo<Document, $this> */
     public function sourceDocument(): BelongsTo
     {

@@ -92,6 +92,23 @@ class Retriever
     }
 
     /**
+     * 検索の対象になる文書数とチャンク数（埋め込み済みのものだけ）。画面の「検索の流れ」に出す
+     *
+     * @return array{documents: int, chunks: int}
+     */
+    public function countTargets(string $scope, ?string $documentType = null): array
+    {
+        // 条件は検索と同じものを使う（LIMIT は関係ないので 1 を渡す）
+        [$where, $bindings] = $this->conditions($scope, 1, $documentType);
+        $row = DB::selectOne(
+            "SELECT count(DISTINCT d.id) AS documents, count(*) AS chunks FROM chunks c JOIN documents d ON d.id = c.document_id WHERE c.embedding IS NOT NULL AND {$where}",
+            $bindings,
+        );
+
+        return ['documents' => (int) $row->documents, 'chunks' => (int) $row->chunks];
+    }
+
+    /**
      * 類似度 = 1 − コサイン距離。並べ替えは距離そのもの（ORDER BY embedding <=> q）だけで行う。
      * pgvector の HNSW 索引が使えるのはこの形（他の並べ替えキーを足すと使われなくなるおそれがある）。
      * 実際に索引が使われるかは RS-007 の rag:explain で確かめる
