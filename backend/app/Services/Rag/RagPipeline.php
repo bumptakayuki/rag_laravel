@@ -17,6 +17,7 @@ use Throwable;
  *
  *   ask:   質問 → Embedder → Retriever → CandidateRanker → PromptBuilder → ClaudeClient → queries（mode = question）
  *   match: 求人票 → JobMatcher（検索に使う部分）→ Embedder → Retriever → CandidateRanker → queries（mode = job_match）
+ *   searchJobs: 質問 → Embedder → Retriever（求人票）→ GroupRanker → queries（mode = job_search。質問画面の求人票モード）
  *
  * - 引数の誤りは外部 API を呼ぶ前に InvalidArgumentException にする
  * - 外部 API の失敗はログに出してから ExternalApiException で投げる（記録はしない。queries は「結果が出た実行」の履歴）
@@ -42,7 +43,7 @@ class RagPipeline
         }
         $builder = new PromptBuilder($chunksPerCandidate);
 
-        [$chunks, $ranking, $latency] = $this->search($question, $options);
+        [$chunks, $ranking, $latency, $info] = $this->search($question, $options, Retriever::SCOPE_CANDIDATE);
 
         $started = hrtime(true);
         $prompt = $builder->build($question, $ranking, $this->candidateLabels($ranking));
@@ -64,11 +65,15 @@ class RagPipeline
             chunks: $chunks,
             ranking: $ranking,
             latency: $latency,
+            info: $info,
             prompt: $prompt,
             answer: $answer,
         );
 
-        return new RagResult($log, $question, $options, $ranking, $prompt, $answer, $unknown, $latency, $recordError);
+        return new RagResult(
+            $log, $question, $options, $ranking, $prompt, $answer, $unknown, $latency, $recordError,
+            mode: QueryLog::MODE_QUESTION, target: $info['target'], embedding: $info['embedding'],
+        );
     }
 
     /**
@@ -79,7 +84,7 @@ class RagPipeline
         // 求人票でない・見出しがない・source の誤りはここで例外になる（API を呼ぶ前）
         $text = $this->jobMatcher->sourceText($job, $source);
 
-        [$chunks, $ranking, $latency] = $this->search($text, $options);
+        [$chunks, $ranking, $latency, $info] = $this->search($text, $options, Retriever::SCOPE_CANDIDATE);
 
         [$log, $recordError] = $this->record(
             mode: QueryLog::MODE_JOB_MATCH,
@@ -88,36 +93,78 @@ class RagPipeline
             chunks: $chunks,
             ranking: $ranking,
             latency: $latency,
+            info: $info,
             sourceDocumentId: $job->id,
         );
 
-        return new RagResult($log, $text, $options, $ranking, null, null, [], $latency, $recordError);
+        return new RagResult(
+            $log, $text, $options, $ranking, null, null, [], $latency, $recordError,
+            mode: QueryLog::MODE_JOB_MATCH, target: $info['target'], embedding: $info['embedding'],
+        );
     }
 
     /**
-     * 候補者検索（埋め込み → チャンク検索 → 候補者ごとに集約）。工程ごとの時間も返す。
-     *
-     * @return array{0: list<RetrievedChunk>, 1: RankResult, 2: array<string, float>}
+     * 質問に近い求人票を探す（回答は生成しない。質問画面の求人票モード）。
      */
-    private function search(string $text, SearchOptions $options): array
+    public function searchJobs(string $question, SearchOptions $options): RagResult
+    {
+        if (trim($question) === '') {
+            throw new InvalidArgumentException('質問が空');
+        }
+
+        [$chunks, $ranking, $latency, $info] = $this->search($question, $options, Retriever::SCOPE_JOB);
+
+        [$log, $recordError] = $this->record(
+            mode: QueryLog::MODE_JOB_SEARCH,
+            question: $question,
+            params: $options->toArray(),
+            chunks: $chunks,
+            ranking: $ranking,
+            latency: $latency,
+            info: $info,
+        );
+
+        return new RagResult(
+            $log, $question, $options, $ranking, null, null, [], $latency, $recordError,
+            mode: QueryLog::MODE_JOB_SEARCH, target: $info['target'], embedding: $info['embedding'],
+        );
+    }
+
+    /**
+     * 検索（埋め込み → チャンク検索 → 候補者 / 求人票ごとに集約）。工程ごとの時間も返す。
+     *
+     * 4つ目の要素は画面の「検索の流れ」に出す補足（対象の文書数・チャンク数、質問ベクトルの次元数と先頭3つ）
+     *
+     * @return array{0: list<RetrievedChunk>, 1: RankResult, 2: array<string, float>, 3: array{target: array{documents: int, chunks: int}, embedding: array{dimensions: int, head: list<float>}}}
+     */
+    private function search(string $text, SearchOptions $options, string $scope): array
     {
         // 設定の誤り（スコア方法・文書種別など）は埋め込み API を呼ぶ前に止める
-        $ranker = $options->candidateRanker();
-        $this->retriever->validate(Retriever::SCOPE_CANDIDATE, $options->chunkLimit, $options->documentType);
+        $ranker = $scope === Retriever::SCOPE_JOB ? $options->documentRanker() : $options->candidateRanker();
+        $this->retriever->validate($scope, $options->chunkLimit, $options->documentType);
 
         $started = hrtime(true);
         $vector = $this->callExternal('embed', fn () => $this->embedder->embed([$text])[0]);
         $latency = ['embed' => self::elapsedMs($started)];
 
         $started = hrtime(true);
-        $chunks = $this->retriever->retrieveByVector($vector, Retriever::SCOPE_CANDIDATE, $options->chunkLimit, $options->documentType);
+        $chunks = $this->retriever->retrieveByVector($vector, $scope, $options->chunkLimit, $options->documentType);
         $latency['search'] = self::elapsedMs($started);
 
         $started = hrtime(true);
         $ranking = $ranker->rank($chunks);
         $latency['rank'] = self::elapsedMs($started);
 
-        return [$chunks, $ranking, $latency];
+        // 件数を数える時間は工程の時間に入れない（検索そのものの時間ではないため）
+        $info = [
+            'target' => $this->retriever->countTargets($scope, $options->documentType),
+            'embedding' => [
+                'dimensions' => count($vector),
+                'head' => array_map(fn ($v) => round((float) $v, 6), array_slice($vector, 0, 3)),
+            ],
+        ];
+
+        return [$chunks, $ranking, $latency, $info];
     }
 
     /**
@@ -146,9 +193,12 @@ class RagPipeline
      * 保存は DB::transaction で包む。呼び出し元がトランザクション中（テストの RefreshDatabase など）でも
      * セーブポイントまで戻すだけで済み、続く読み込みが「トランザクションが中断された」で失敗しない
      *
-     * retrieved には「1段目で取れたチャンク」「上位 top_k 名の集約結果」「件数」と、回答を生成したときは
-     * 「資料番号 → チャンク」の対応を入れる（後から、どの資料を見てどう答えたかを追えるようにする）
+     * retrieved には「1段目で取れたチャンク」「上位 top_k 名（job_search は top_k 件の求人票）の集約結果」「件数」
+     * 「対象の文書数・チャンク数」「質問ベクトルの次元数と先頭3つ」と、回答を生成したときは
+     * 「資料番号 → チャンク」の対応を入れる（後から、どの資料を見てどう答えたかを追えるようにする）。
+     * 履歴の表示（QueryLogRestorer）はこの中身から画面を組み立て直す
      *
+     * @param  array{target: array{documents: int, chunks: int}, embedding: array{dimensions: int, head: list<float>}}  $info
      * @param  array<string, mixed>  $params
      * @param  list<RetrievedChunk>  $chunks  1段目で取れたチャンク（下限で除外する前）
      * @param  array<string, float>  $latency
@@ -161,6 +211,7 @@ class RagPipeline
         array $chunks,
         RankResult $ranking,
         array $latency,
+        array $info,
         ?Prompt $prompt = null,
         ?string $answer = null,
         ?int $sourceDocumentId = null,
@@ -180,14 +231,18 @@ class RagPipeline
                 'candidate_id' => $c->candidateId,
                 'similarity' => round($c->similarity, 6),
             ], $chunks),
-            'candidates' => array_map(fn (RankedGroup $g) => [
-                'candidate_id' => $g->key,
-                'score' => round($g->score, 6),
-                'max_similarity' => round($g->maxSimilarity, 6),
-                'hits' => $g->hits,
-                'hits_by_type' => $g->hitsByType,
-            ], $ranking->groups),
+            'target' => $info['target'],
+            'embedding' => $info['embedding'],
         ];
+        // 集約結果。求人票を探したときは文書 ID、それ以外は候補者 ID でまとめている
+        [$groupsKey, $idKey] = $mode === QueryLog::MODE_JOB_SEARCH ? ['jobs', 'document_id'] : ['candidates', 'candidate_id'];
+        $retrieved[$groupsKey] = array_map(fn (RankedGroup $g) => [
+            $idKey => $g->key,
+            'score' => round($g->score, 6),
+            'max_similarity' => round($g->maxSimilarity, 6),
+            'hits' => $g->hits,
+            'hits_by_type' => $g->hitsByType,
+        ], $ranking->groups);
         if ($prompt !== null) {
             $retrieved['sources'] = array_map(fn (PromptSource $s) => [
                 'number' => $s->number,

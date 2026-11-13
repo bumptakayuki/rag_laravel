@@ -77,11 +77,12 @@ class JobMatcher
     }
 
     /**
-     * Markdown を「見出し名 => 本文」に分ける。見出しは # 〜 ######（Chunker と同じ規則）
+     * Markdown を「見出し名 => 本文」に分ける。見出しは # 〜 ######（Chunker と同じ規則）。
+     * 求人票一覧の「主な必須スキル」でも使う
      *
      * @return array<string, string>
      */
-    private static function sections(string $markdown): array
+    public static function sections(string $markdown): array
     {
         $sections = [];
         $current = null;

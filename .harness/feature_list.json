@@ -161,7 +161,7 @@
     {
       "id": "RS-006",
       "name": "画面",
-      "goal": "質問画面（/）・候補者詳細画面（/candidates/{id}）・履歴画面（/history）を Blade + Tailwind CDN で作る",
+      "goal": "質問画面（/）・候補者詳細画面（/candidates/{id}）・求人票一覧画面（/jobs）・求人票詳細画面（/jobs/{id}）・履歴画面（/history）を Blade + Tailwind CDN で作る（要件定義書 第4.4章の5画面。開発者の承認で3画面から変更）",
       "done_when": [
         "要件定義書 第4.4章の表示項目がすべて出る",
         "候補者カードを展開するとヒットチャンクが文書別に並び、候補者詳細の該当箇所へ移動できる",
@@ -172,9 +172,18 @@
       "depends_on": [
         "RS-005"
       ],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "bash scripts/check.sh → GATE: PASS（2026-11-13、223件 1302 assertions。新規 CandidatePageTest・JobPagesTest・HistoryPageTest・DocumentOutlineTest、SearchPageTest を POST/PRG に書き換え）",
+        "範囲: 要件定義書 第4.4章の5画面（/・/candidates/{id}・/jobs・/jobs/{id}・/history）。goal を5画面に直すことは開発者が承認",
+        "done_when 1: SearchPageTest（カード・バッジ・抜粋、回答と資料の対応、プロンプト全文、検索の流れの件数・時間・SQL）、CandidatePageTest（全文・ハイライト・類似度・資料番号・順位/スコア/ヒット数・圏外）、JobPagesTest（一覧の項目・詳細・候補者ランキング）、HistoryPageTest（質問・モード・条件・1位・スコア・合計時間）",
+        "done_when 2: SearchPageTest::test_展開したカードの各チャンクから候補者詳細の該当箇所へ移動できる、CandidatePageTest（id=\"chunk-{id}\" とヒット一覧の #chunk リンク）。タブ切り替えは画面の JavaScript（開発者の指示）",
+        "done_when 3: HistoryPageTest（質問・求人票検索・求人マッチングの再実行、元の求人票が消えたら再実行不可、外部 API 失敗は記録しない、存在しない記録は 404）",
+        "done_when 4: 上記 Feature テストは Http::fake（tests/Support/FakesRagApis）でネットワークを使わない。JS（タブ・スピナー）の動作は属性の有無のみテストし、実際の動きはブラウザで確認する",
+        "reviewer: 1回目 REJECT（GATE: FAIL＝backend/.env のキーを gitleaks が検出のみ）→ low 3件対応・開発者の指示でタブの JS 化とスピナー追加 → キー削除後 2回目 APPROVE（low 3件は progress.md に記録）",
+        "開発者がブラウザで全画面（タブ切り替え・スピナー含む）を確認"
+      ]
     },
     {
       "id": "RS-007",

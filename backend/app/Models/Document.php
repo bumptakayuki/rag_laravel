@@ -22,6 +22,9 @@ class Document extends Model
     /** 求人票 */
     public const TYPE_JOB = 'job';
 
+    /** 候補者の文書の種別。画面にはこの順（職務経歴書 → 履歴書）で並べる */
+    public const CANDIDATE_TYPES = [self::TYPE_CAREER_HISTORY, self::TYPE_RESUME];
+
     /** 画面表示用の種別名 */
     public const TYPE_LABELS = [
         self::TYPE_RESUME => '履歴書',
