@@ -201,9 +201,19 @@
       "depends_on": [
         "RS-006"
       ],
-      "status": "pending",
-      "passes": false,
-      "evidence": []
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "bash scripts/check.sh → GATE: PASS（2026-11-13、253件 1524 assertions。新規 ExperimentPageTest・ExperimentCommandsTest・EndToEndTest・Unit/EvaluatorTest）",
+        "開発者の決定: Recall@k は check.sh に入れない（A-02）、RAGなし比較は queries.answer_without_rag 列で保存（migration 2026_11_13_000002 を開発 DB に実行済み）、まとめて実装",
+        "done_when 1: ExperimentCommandsTest（Recall@k・平均順位・圏外の数値、k/score/min-similarity の切り替え、不正な評価データ）、EvaluatorTest。実データ（実 API）: 初期値 Recall@5 1.000・平均順位 1.81、--k=3 で 0.960、--doc-type=rirekisho で 0.980・2.56、avg3 1.000・1.81、max_plus_hits 1.000・1.88",
+        "done_when 2: ExperimentCommandsTest::test_rag_index_の前後で_rag_explain_の実行計画が変わる（ランダム5000件で Seq Scan → Index Scan → drop で Seq Scan）。開発 DB（実データ371＋ランダム30000件、m=16）: rag:explain --random --set=hnsw.ef_search=60 が索引なし Seq Scan 約480ms → 索引あり Index Scan 約18ms。既定 ef_search=40 では索引があっても Seq Scan（README に実測を記載）。実験後に index drop・seed-random --purge で原状回復（chunks 371・候補者20・HNSW なし）",
+        "done_when 3: EndToEndTest::test_取り込みから回答と記録まで通る（rag:ingest → rag:search → rag:ask → queries → 画面。Http::fake）",
+        "done_when 4: README.md に「セットアップ」「コードを読む順番」「実験する」の節",
+        "Retriever::explain の設定は必ず巻き戻す。CLI 経路（外側トランザクションなし）で explain 後に ef_search=40・enable_seqscan=on に戻ることを tinker で確認",
+        "reviewer: 1回目 APPROVE（low 7件）→ 実測に合わせた README・説明文・テスト追加の差分を再レビューして APPROVE（medium 1・low 1 は progress.md に記録）",
+        "開発者がブラウザで「検索だけ実行」「RAGなし比較」を確認（2026-11-13）"
+      ]
     }
   ]
 }

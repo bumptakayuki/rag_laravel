@@ -1,7 +1,7 @@
 # Development Progress
 
 ## Current task
-なし（RS-006 完了。次は RS-007）
+なし（RS-007 完了。全タスク done）
 
 ## Completed
 - ハーネス最小構成を作成（CLAUDE.md / feature_list.json / progress.md / init.sh / check.sh / reviewer / settings.json）
@@ -14,6 +14,7 @@
 - RS-005 回答生成: PromptBuilder（純粋。[番号] (種別・見出し) 本文、候補者あたり chunks_per_candidate 件）、Prompt / PromptSource、ClaudeClient::generateText、RagPipeline（ask / match。工程ごとに計測・queries に記録・外部 API エラーをログに出す）、RagResult、rag:ask、rag:match を RagPipeline 経由に変更。migration 2026_11_13_000001（queries.mode / source_document_id）を開発 DB rag に実行済み。AskTest（Feature）・PromptBuilderTest（Unit）。GATE: PASS（180件）、reviewer APPROVE（3回目。2回目は REJECT → 修正）。実 API で2問確認済み（queries id=1・2）
 - RS-006 画面: 要件定義書 第4.4章の5画面（/・/candidates/{id}・/jobs・/jobs/{id}・/history）。質問画面を PRG にし QueryLogRestorer で記録から結果を復元、DocumentOutline で全文表示、候補者詳細のタブは JavaScript（開発者の指示）、時間のかかる POST にスピナーと二重送信防止（開発者の指示）、履歴の再実行。CandidatePageTest・JobPagesTest・HistoryPageTest・DocumentOutlineTest、SearchPageTest を POST に書き換え。GATE: PASS（223件）、reviewer APPROVE（1回目 REJECT＝gitleaks のみ → .env のキー削除後 2回目 APPROVE）。goal は開発者の承認で5画面に変更。開発者がブラウザで確認済み
 - RS-004b 簡易検索画面（開発者の指示で追加）: SearchController（GET /）、layouts/app・search の Blade（Tailwind CDN、<details> で展開）、Retriever::sqlForDisplay()。SearchPageTest（Feature）。開発者がブラウザで実データ確認。GATE: PASS（154件）、reviewer APPROVE（1回目 REJECT → 修正）
+- RS-007 実験機能: 質問画面の「検索だけ実行」（params.search_only、Claude を呼ばない）と「RAGなし比較」（queries.answer_without_rag。migration 2026_11_13_000002 を開発 DB に実行済み）、rag:eval（Evaluator）・rag:index（VectorIndex）・rag:explain（Retriever::explain）・rag:seed-random（RandomChunkSeeder）、結合テスト EndToEndTest、README。GATE: PASS（253件）、reviewer APPROVE（2回。どちらも APPROVE）。実データの rag:eval は Recall@5 1.000・平均順位 1.81
 
 ## Decisions
 - タスクは要件定義書（https://claude.ai/artifact/8SHGJaz6vGQhBTxX14cfsk）第8章の7ステップに合わせた（旧 RS-001〜008 は廃止）
@@ -56,6 +57,13 @@
 - RS-006: 求人票詳細からの実行は設定の初期値で、選べるのは検索に使う部分だけ。適合理由は作らない（任意）
 - 詳細は docs/architecture.md「画面」
 
+- RS-007: Recall@k は check.sh に入れない（A-02。実 API が必要なため。開発者の判断）。RAGなし比較の回答は queries の新しい列に保存（開発者の判断）
+- RS-007: 「検索だけ実行」は mode を増やさず question + params.search_only。押せなくしたボタンの値は送られないので、レイアウトの JS で hidden に写す
+- RS-007: RAGなしの回答の生成に失敗したら、RAGありの回答も含めて記録しない（外部 API の失敗は記録しない方針どおり。課金済みの回答は失われる。reviewer low）
+- RS-007: rag:explain の設定（--set）は set_config(…, true) で、トランザクションは必ず巻き戻す（セーブポイントの確定では SET LOCAL が残るため）
+- RS-007: 索引は開発 DB 3万件・既定 ef_search=40 では planner が使わない。比較は --set=hnsw.ef_search=60 で行う。Retriever は ef_search を変えない（学習の題材）
+- 詳細は docs/architecture.md「実験機能」
+
 ## Issues / Risks
 - [reviewer low] Ingestor: 2つの場所で内容を入れ替えた／移動した場合「同じ内容の文書が既にある」でスキップされ古いデータが残る（Ingestor.php:194-200）。その場合は --fresh で入れ直す。直すなら replace_id を sameContent 判定から外す
 - [reviewer low] Ingestor: --fresh で中身が空のディレクトリを指定すると全件削除して0件になる（警告のみ）。$fresh && sources 空なら中止する案
@@ -74,13 +82,17 @@
 - [reviewer low] candidates/show の tabOf / openHash の decodeURIComponent は `#%` のような壊れたハッシュで URIError を投げ、タブが初期化されない（両パネル表示のまま。崩れはしない）。直すなら try/catch で null を返す
 - [reviewer low] ローカルの main が origin/main より古い（RS-005 のマージが未反映）。差分やレビュー範囲は origin/main 基準で見る
 - [reviewer low] タブ・スピナーの JS は属性の有無しかテストしていない（開発者がブラウザで確認済み）
+- [reviewer medium] ExperimentCommandsTest の索引テストは「既定 ef_search のまま planner が Index Scan を選び 40 行返る」を前提にしている。planner の判断は件数・テーブルの大きさ（ロールバックした行のページも残る）・バージョンで変わるので、不安定になったら索引ありの側を --set=enable_seqscan=off か hnsw.ef_search=60 で確かめ、「40 行だけ返る」は別のテストに分ける
+- [reviewer low] rag:explain の説明文「LIMIT が hnsw.ef_search より大きいときに起きる」は言い切りすぎ（テストでは LIMIT 50 でも索引が選ばれる）。直すなら「起きることがある」
+- [reviewer low] eval.json の expected に存在しない候補者コード（打ち間違い）があっても、黙って「圏外」になる。直すなら警告を出す
+- [reviewer low] rag:seed-random が途中で失敗するとバッチ単位で部分的に残る。残っている間は候補者 RANDOM が画面に出ることがある → --purge で消す
+- [reviewer low] 「検索だけ実行」ボタンの JS（押したボタンの値を hidden に写す）は自動テストしていない（開発者がブラウザで確認済み）
 
 ## Next action
-- 開発者: RS-006 の PR をレビューしてマージ
-- その後: RS-007 に着手
+- 全タスク完了。次に進めるなら progress の reviewer 指摘（索引テストの安定化など）から選ぶ
 
 ## Last check
-- check.sh: GATE: PASS（2026-11-13、223件）
+- check.sh: GATE: PASS（2026-11-13、253件）
 
 ## Last commit
-- 946698e RS-006: 画面（feature/rs-006-ui、push 済み。この後に完了記録のコミットあり）
+- RS-007: feature/rs-007-experiments をコミットし、PR でマージ（開発者の指示）
