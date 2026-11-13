@@ -1,13 +1,7 @@
 # Development Progress
 
 ## Current task
-RS-006 画面（実装・テスト済み、完了待ち。feature/rs-006-ui にコミット済み）
-- 範囲は要件定義書 第4.4章の5画面。feature_list の goal（3画面）を5画面に直すのは開発者の承認待ち
-- 開発者の指示で、候補者詳細のタブ切り替えをサーバー（?tab=）から画面の JavaScript に移した（reviewer 未確認）
-- 開発者の指示で、時間のかかる POST（質問・候補者を探す・再実行）に実行中のスピナーと二重送信防止を付けた（form の data-loading。reviewer 未確認）
-- php artisan test 223 passed、pint PASS。check.sh は gitleaks だけ FAIL（backend/.env 71行目の OpenAI キー。コード起因ではない）
-- reviewer: 1回目 REJECT（理由は GATE: FAIL のみ。コード修正は不要との判定）。low 3件は対応済み（job_match を質問画面で開いたときフォームに入れない、丸めた類似度の注記、履歴のページ分けテスト）
-- 完了の条件: 開発者が backend/.env からキーを消す → check.sh で GATE: PASS → reviewer 再レビューで APPROVE → status done
+なし（RS-006 完了。次は RS-007）
 
 ## Completed
 - ハーネス最小構成を作成（CLAUDE.md / feature_list.json / progress.md / init.sh / check.sh / reviewer / settings.json）
@@ -18,6 +12,7 @@ RS-006 画面（実装・テスト済み、完了待ち。feature/rs-006-ui に�
 
 - RS-004 検索: Retriever（生SQL <=>、候補者 / 求人票、--doc-type）、GroupRanker・CandidateRanker（max / avg3 / max_plus_hits）、SearchOptions、JobMatcher（required / required_preferred / full）、rag:search（--type=job 含む）・rag:match。CandidateRankerTest（Unit）・SearchTest（Feature）。実データで done_when 4件を確認（evidence 参照）。GATE: PASS（124件）、reviewer APPROVE（1回目 REJECT → 修正）
 - RS-005 回答生成: PromptBuilder（純粋。[番号] (種別・見出し) 本文、候補者あたり chunks_per_candidate 件）、Prompt / PromptSource、ClaudeClient::generateText、RagPipeline（ask / match。工程ごとに計測・queries に記録・外部 API エラーをログに出す）、RagResult、rag:ask、rag:match を RagPipeline 経由に変更。migration 2026_11_13_000001（queries.mode / source_document_id）を開発 DB rag に実行済み。AskTest（Feature）・PromptBuilderTest（Unit）。GATE: PASS（180件）、reviewer APPROVE（3回目。2回目は REJECT → 修正）。実 API で2問確認済み（queries id=1・2）
+- RS-006 画面: 要件定義書 第4.4章の5画面（/・/candidates/{id}・/jobs・/jobs/{id}・/history）。質問画面を PRG にし QueryLogRestorer で記録から結果を復元、DocumentOutline で全文表示、候補者詳細のタブは JavaScript（開発者の指示）、時間のかかる POST にスピナーと二重送信防止（開発者の指示）、履歴の再実行。CandidatePageTest・JobPagesTest・HistoryPageTest・DocumentOutlineTest、SearchPageTest を POST に書き換え。GATE: PASS（223件）、reviewer APPROVE（1回目 REJECT＝gitleaks のみ → .env のキー削除後 2回目 APPROVE）。goal は開発者の承認で5画面に変更。開発者がブラウザで確認済み
 - RS-004b 簡易検索画面（開発者の指示で追加）: SearchController（GET /）、layouts/app・search の Blade（Tailwind CDN、<details> で展開）、Retriever::sqlForDisplay()。SearchPageTest（Feature）。開発者がブラウザで実データ確認。GATE: PASS（154件）、reviewer APPROVE（1回目 REJECT → 修正）
 
 ## Decisions
@@ -76,13 +71,16 @@ RS-006 画面（実装・テスト済み、完了待ち。feature/rs-006-ui に�
 - [reviewer low] ?doc_type[]=x は「絞り込みなし」で検索が進む（500 にはならない）。テストは足していない
 - [reviewer low] RagPipeline::record（214行目付近）の境界: QueryException に previous がないと自身のメッセージ（SQL とバインド値を含みうる）の1行目を使う／メッセージが空だと strtok が false を返し TypeError。どちらも通常は起きない。直すなら previous なしは固定文、`strtok(...) ?: '不明なエラー'`
 - [学習メモ → RS-007] 実データの「PHPの経験がある人は？」で、Laravel を1件だけ経験した C017 の資料も渡したが、回答には挙がらなかった（資料の選び方と回答の判断は別）
+- [reviewer low] candidates/show の tabOf / openHash の decodeURIComponent は `#%` のような壊れたハッシュで URIError を投げ、タブが初期化されない（両パネル表示のまま。崩れはしない）。直すなら try/catch で null を返す
+- [reviewer low] ローカルの main が origin/main より古い（RS-005 のマージが未反映）。差分やレビュー範囲は origin/main 基準で見る
+- [reviewer low] タブ・スピナーの JS は属性の有無しかテストしていない（開発者がブラウザで確認済み）
 
 ## Next action
-- 開発者: 実データでブラウザ確認（キーがある間に）→ backend/.env からキーを消す → goal 変更の可否を回答
-- その後: check.sh → reviewer 再レビュー → feature_list を done に
+- 開発者: RS-006 の PR をレビューしてマージ
+- その後: RS-007 に着手
 
 ## Last check
-- check.sh: GATE: PASS（2026-11-13、180件）
+- check.sh: GATE: PASS（2026-11-13、223件）
 
 ## Last commit
-- afb5868 Merge pull request #4（RS-004）
+- 946698e RS-006: 画面（feature/rs-006-ui、push 済み。この後に完了記録のコミットあり）
