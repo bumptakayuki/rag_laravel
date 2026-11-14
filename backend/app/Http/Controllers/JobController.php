@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RunsRagPipeline;
+use App\Http\Requests\JobMatchRequest;
 use App\Models\Chunk;
 use App\Models\Document;
 use App\Models\QueryLog;
@@ -15,7 +16,6 @@ use App\Services\Rag\Retriever;
 use App\Services\Rag\SearchOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
@@ -75,14 +75,10 @@ class JobController extends Controller
         return view('jobs.show', $this->showData($job, is_string($source) ? $source : JobMatcher::SOURCE_REQUIRED, $result, $retriever));
     }
 
-    public function match(Request $request, Document $job, RagPipeline $pipeline, Retriever $retriever): RedirectResponse|View
+    public function match(JobMatchRequest $request, Document $job, RagPipeline $pipeline, Retriever $retriever): RedirectResponse|View
     {
-        abort_unless($job->type === Document::TYPE_JOB, 404);
-
-        $source = $request->validate(
-            ['source' => ['required', Rule::in(array_keys(JobMatcher::SOURCE_SECTIONS))]],
-            ['source.required' => '検索に使う部分を選んでください。', 'source.in' => '検索に使う部分の値が正しくありません。'],
-        )['source'];
+        // 求人票でない文書の 404 と入力の検証は JobMatchRequest で行う
+        $source = $request->validated('source');
 
         // 件数・下限・スコアの決め方は設定の初期値（rag:match と同じ）
         return $this->runPipeline(

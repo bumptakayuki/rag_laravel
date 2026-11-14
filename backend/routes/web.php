@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [SearchController::class, 'index'])->name('search');
 Route::post('/', [SearchController::class, 'run'])->name('search.run');
 
-// 候補者詳細
+// 候補者一覧・詳細
+Route::get('/candidates', [CandidateController::class, 'index'])->name('candidates.index');
 Route::get('/candidates/{candidate}', [CandidateController::class, 'show'])->whereNumber('candidate')->name('candidates.show');
 
 // 求人票一覧・詳細

@@ -208,11 +208,13 @@ class ExperimentCommandsTest extends TestCase
     public function test_索引があっても_planner_が全件読みを選んだときはその旨を出す(): void
     {
         // planner が索引を使うかは件数とテーブルの大きさの見積もりで決まる（前のテストがロールバックした行も
-        // ページとして残るので、順番で変わる）。ここでは enable_indexscan=off で全件読みを選ばせ、説明文だけを確かめる
+        // ページとして残るので、順番で変わる）。ここでは索引を使う走査をすべて止めて全件読みを選ばせ、説明文だけを確かめる。
+        // enable_indexscan=off だけでは、見積もりによって chunks を document_id の一意索引で Bitmap Heap Scan することがある
+        // （HNSW 索引ではないので説明文は同じだが、Seq Scan にはならない）。そのため enable_bitmapscan=off も付ける
         $this->seedCandidates();
         $this->artisan('rag:index', ['action' => 'create'])->assertSuccessful();
 
-        Artisan::call('rag:explain', ['--random' => true, '--set' => ['enable_indexscan=off']]);
+        Artisan::call('rag:explain', ['--random' => true, '--set' => ['enable_indexscan=off', 'enable_bitmapscan=off']]);
         $output = Artisan::output();
 
         $this->assertStringContainsString('索引: あり', $output);

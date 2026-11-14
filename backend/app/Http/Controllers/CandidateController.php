@@ -7,11 +7,16 @@ use App\Models\Chunk;
 use App\Models\Document;
 use App\Models\QueryLog;
 use App\Services\Rag\DocumentOutline;
+use App\Services\Rag\JobMatcher;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * 候補者詳細（/candidates/{id}?query={query_id}。要件定義書 第4.4章）。
+ * 候補者一覧（/candidates?q=&job=&skill=&keyword=）と候補者詳細（/candidates/{id}?query={query_id}。要件定義書 第4.4章）。
+ *
+ * 一覧は取り込み済みの全候補者をコード順に出す。絞り込みは文字列の一致だけ（RAG の検索は使わない。外部 API も呼ばない）。
+ *
+ * 詳細:
  *
  * 履歴書と職務経歴書の全文を両方出す。query を渡すと、その検索でヒットしたチャンクを
  * ハイライトして類似度を横に出す。検索結果のカードからは "#chunk-{id}" つきで該当箇所へ直接移動する。
@@ -20,6 +25,104 @@ use Illuminate\View\View;
  */
 class CandidateController extends Controller
 {
+    /** 職務経歴書・履歴書で希望職種を書く行（「希望職種：バックエンドエンジニア」） */
+    private const DESIRED_JOB_PATTERN = '/^希望職種[：:]\s*(.+?)\s*$/mu';
+
+    /** スキルを書く見出し */
+    private const SKILL_SECTION = 'スキル';
+
+    /**
+     * 一覧。絞り込みはすべて文字列の一致（埋め込み・Claude は使わない）で、指定したものを AND で組み合わせる。
+     *   q        コードか名前の部分一致
+     *   job      希望職種の完全一致（選択肢は取り込み済みの希望職種）
+     *   skill    職務経歴書・履歴書の「スキル」欄に含まれる（大文字小文字は区別しない）
+     *   keyword  職務経歴書・履歴書の全文に含まれる（大文字小文字は区別しない）
+     * 職種・スキル・キーワードは本文を読み込んで PHP で判定する（候補者は数十名の想定）
+     */
+    public function index(Request $request): View
+    {
+        $filters = [];
+        foreach (['q', 'job', 'skill', 'keyword'] as $name) {
+            $filters[$name] = is_string($request->query($name)) ? trim($request->query($name)) : '';
+        }
+
+        $query = Candidate::with('documents:id,candidate_id,type,content,created_at')->withCount('chunks')->orderBy('code');
+        if ($filters['q'] !== '') {
+            // コードか名前の部分一致。LIKE の特殊文字（% _ \）はそのままの文字として探す
+            $like = '%'.addcslashes($filters['q'], '%_\\').'%';
+            $query->where(fn ($q) => $q->where('code', 'ilike', $like)->orWhere('name', 'ilike', $like));
+        }
+        $all = $query->get();
+
+        // 職種の選択肢は、コード・名前の絞り込みに関係なく全候補者から作る
+        $jobOptions = Candidate::with('documents:id,candidate_id,type,content')->get()
+            ->map(fn (Candidate $c) => self::desiredJob($c))->filter()->unique()->sort()->values()->all();
+
+        $rows = [];
+        foreach ($all as $candidate) {
+            $desiredJob = self::desiredJob($candidate);
+            if ($filters['job'] !== '' && $desiredJob !== $filters['job']) {
+                continue;
+            }
+            $skillLines = $filters['skill'] === '' ? [] : self::matchingSkillLines($candidate, $filters['skill']);
+            if ($filters['skill'] !== '' && $skillLines === []) {
+                continue;
+            }
+            if ($filters['keyword'] !== '' && ! $candidate->documents->contains(
+                fn (Document $d) => mb_stripos($d->content, $filters['keyword']) !== false
+            )) {
+                continue;
+            }
+            $rows[] = ['candidate' => $candidate, 'desiredJob' => $desiredJob, 'skillLines' => $skillLines];
+        }
+
+        return view('candidates.index', [
+            'filters' => $filters,
+            'filtered' => array_filter($filters, fn (string $v) => $v !== '') !== [],
+            'rows' => $rows,
+            'jobOptions' => $jobOptions,
+            'candidateCount' => Candidate::count(),
+            'chunkTotal' => Chunk::whereHas('document', fn ($q) => $q->whereNotNull('candidate_id'))->count(),
+        ]);
+    }
+
+    /**
+     * 希望職種。職務経歴書 → 履歴書 の順に「希望職種：」の行を探す。なければ null
+     */
+    public static function desiredJob(Candidate $candidate): ?string
+    {
+        foreach (Document::CANDIDATE_TYPES as $type) {
+            $document = $candidate->documents->firstWhere('type', $type);
+            if ($document !== null && preg_match(self::DESIRED_JOB_PATTERN, $document->content, $m) === 1) {
+                return $m[1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 「スキル」欄の行のうち、語を含むもの（箇条書きの記号は外す。職務経歴書 → 履歴書 の順、重複は除く）
+     *
+     * @return list<string>
+     */
+    public static function matchingSkillLines(Candidate $candidate, string $term): array
+    {
+        $lines = [];
+        foreach (Document::CANDIDATE_TYPES as $type) {
+            $document = $candidate->documents->firstWhere('type', $type);
+            $section = $document === null ? null : (JobMatcher::sections($document->content)[self::SKILL_SECTION] ?? null);
+            foreach (explode("\n", (string) $section) as $line) {
+                $line = trim(preg_replace('/^\s*(?:[-*+]|\d+\.)\s+/u', '', $line));
+                if ($line !== '' && mb_stripos($line, $term) !== false && ! in_array($line, $lines, true)) {
+                    $lines[] = $line;
+                }
+            }
+        }
+
+        return $lines;
+    }
+
     public function show(Request $request, Candidate $candidate): View
     {
         $documents = $candidate->documents()->with('chunks')->get()->keyBy('type');

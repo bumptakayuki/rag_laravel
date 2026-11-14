@@ -214,6 +214,83 @@
         "reviewer: 1回目 APPROVE（low 7件）→ 実測に合わせた README・説明文・テスト追加の差分を再レビューして APPROVE（medium 1・low 1 は progress.md に記録）",
         "開発者がブラウザで「検索だけ実行」「RAGなし比較」を確認（2026-11-13）"
       ]
+    },
+    {
+      "id": "RS-008",
+      "name": "候補者一覧画面",
+      "goal": "取り込み済みの全候補者を一覧できる画面（/candidates）。検索は使わず、コード・名前で絞り込める。ナビに「候補者」を追加",
+      "done_when": [
+        "/candidates に全候補者がコード順で、文書（職務経歴書・履歴書）の有無・チャンク数・取り込み日時・詳細へのリンクつきで出る",
+        "コードか名前の部分一致で絞り込める（LIKE の特殊文字はそのままの文字として扱う）",
+        "外部 API を呼ばない",
+        "ヘッダーのナビに「候補者」があり、候補者一覧・詳細で選択中になる"
+      ],
+      "approval_required": [],
+      "depends_on": [
+        "RS-006"
+      ],
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "bash scripts/check.sh → GATE: PASS（2026-11-13、260件。新規 CandidateListPageTest 7件。RS-009 で同じファイルに4件を足し、ナビ・一覧のテストは viewData('rows') に合わせて書き換えた）",
+        "開発者の指示で追加（「普通の全候補者一覧を見れる画面」）",
+        "done_when 1: test_全候補者をコード順に_文書の有無_チャンク数_取り込み日時つきで出す（チャンク数は data-testid=\"chunk-count\" のセルと viewData（RS-009 以降は rows の candidate.chunks_count）で候補者ごとに確認）、test_候補者がいなければ0名と該当なしを出す",
+        "done_when 2: test_コードか名前の部分一致で絞り込む、test_like_の特殊文字はそのままの文字として探す（% _ \\）、test_該当なしのときはその旨を出す、test_配列の_q_は絞り込みなしとして扱う",
+        "done_when 3: Http::assertNothingSent()",
+        "done_when 4: test_ナビに候補者があり_一覧と詳細で選択中になる",
+        "reviewer: 1回目 REJECT（high: チャンク数の期待値が class の text-[13px] に当たり素通り）→ 修正して2回目 APPROVE（low 2件は progress.md に記録）"
+      ]
+    },
+    {
+      "id": "RS-010",
+      "name": "索引テストの安定化",
+      "goal": "ExperimentCommandsTest の「索引があっても planner が全件読みを選んだときはその旨を出す」が、全テストを流したときにときどき落ちる（check.sh が不安定になる）のを直す。開発者の指示で RS-009 より先に行う",
+      "done_when": [
+        "落ちたときの実行計画を確かめ、原因を特定している",
+        "テストの確かめたいこと（HNSW 索引を使わなかったときの説明文）を弱めずに直す",
+        "php artisan test の全体実行を続けて10回、check.sh を続けて3回 PASS する"
+      ],
+      "approval_required": [],
+      "depends_on": [
+        "RS-007"
+      ],
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "原因: 落ちたときの実行計画を一時的なデバッグの行で書き出して確認（行は削除済み）。chunks が Bitmap Heap Scan（chunks_document_id_chunk_index_unique）で読まれ、「Seq Scan on chunks」が出なかった。enable_indexscan=off では Bitmap Scan は止まらない",
+        "修正: rag:explain の --set に enable_bitmapscan=off を追加（アサーションは変えていない）",
+        "修正前: php artisan test の全体実行で 5回中1回・8回中1回 FAIL（reviewer の測定では8回中3回）",
+        "修正後: php artisan test の全体実行を10回続けて 265 passed。bash scripts/check.sh を3回続けて GATE: PASS（2026-11-13、265件 1613 assertions）。reviewer も check.sh 3回・test 7回ですべて PASS",
+        "reviewer: APPROVE（low 1件: RagExplain の説明文は Bitmap Heap Scan でも「全件読み」と出る → progress.md に記録）"
+      ]
+    },
+    {
+      "id": "RS-009",
+      "name": "候補者一覧のキーワード検索",
+      "goal": "候補者一覧（/candidates）で、希望職種・スキル・キーワードによる簡易的な絞り込みをできるようにする。文字列の一致だけを使い、RAG の検索や外部 API は使わない（開発者の指示:「完全一致で良い」。希望職種は完全一致、スキル・キーワードは「含む」で判定する。Java が JavaScript にも当たることを説明したうえで、開発者が「含む」で良いと判断した）",
+      "done_when": [
+        "希望職種（本文の「希望職種：」の行）を、取り込み済みの値から選んで完全一致で絞り込める。一覧に希望職種の列がある",
+        "スキル欄（## スキル）に語が含まれる候補者だけを出し、一致した行を表示する（大文字小文字は区別しない）",
+        "キーワードが履歴書・職務経歴書の全文に含まれる候補者だけを出す（大文字小文字は区別しない。求人票は対象外）",
+        "コード・名前を含む条件はすべて満たす候補者だけを出し、入力した条件が画面に残る",
+        "外部 API を呼ばない"
+      ],
+      "approval_required": [],
+      "depends_on": [
+        "RS-008"
+      ],
+      "status": "done",
+      "passes": true,
+      "evidence": [
+        "bash scripts/check.sh → 3回続けて GATE: PASS（2026-11-13、265件 1613 assertions。CandidateListPageTest は12件）",
+        "done_when 1: test_希望職種は完全一致で絞り込み_選択肢は取り込み済みの希望職種、test_全候補者をコード順に…（希望職種の列）、test_履歴書だけにある希望職種とスキル欄も使い_同じスキル行は1回だけ出す",
+        "done_when 2: test_スキルはスキル欄に含まれる候補者を出し_一致した行を表示する、test_履歴書だけにある…（履歴書のスキル欄・重複の除外）",
+        "done_when 3: test_キーワードは履歴書と職務経歴書の全文に含まれる候補者を出す",
+        "done_when 4: test_条件はすべて満たす候補者だけ出す",
+        "done_when 5: Http::assertNothingSent()",
+        "開発者の判断（2026-11-13）: 不安定な索引テストを先に直す（RS-010）、スキルは「含む」で良い、RS-008〜010 をまとめて1コミット",
+        "reviewer: 1回目 REJECT（ゲートが不安定・一致の仕方の確認・low）→ RS-010 と low の修正後に APPROVE（low 3件は progress.md に記録）"
+      ]
     }
   ]
 }

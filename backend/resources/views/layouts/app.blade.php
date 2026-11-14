@@ -10,7 +10,8 @@
 <body class="min-h-screen bg-[#F6F7F9] text-[#1B1F24] antialiased">
     @php
         $nav = [
-            ['route' => 'search', 'label' => '検索', 'active' => request()->routeIs('search', 'search.run', 'candidates.*')],
+            ['route' => 'search', 'label' => '検索', 'active' => request()->routeIs('search', 'search.run')],
+            ['route' => 'candidates.index', 'label' => '候補者', 'active' => request()->routeIs('candidates.*')],
             ['route' => 'jobs.index', 'label' => '求人票', 'active' => request()->routeIs('jobs.*')],
             ['route' => 'history.index', 'label' => '履歴', 'active' => request()->routeIs('history.*')],
         ];
