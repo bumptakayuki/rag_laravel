@@ -186,6 +186,9 @@ class JobPagesTest extends TestCase
         $resume = $this->document($this->c1, Document::TYPE_RESUME);
         $this->get(route('jobs.show', $resume))->assertNotFound();
         $this->post(route('jobs.match', $resume), ['source' => 'required'])->assertNotFound();
+        // 求人票でない文書は、入力の検証より先に 404（JobMatchRequest::authorize）
+        $this->post(route('jobs.match', $resume), ['source' => 'bogus'])->assertNotFound();
+        $this->post(route('jobs.match', $resume))->assertNotFound();
         $this->get('/jobs/999')->assertNotFound();
 
         $this->post(route('jobs.match', $this->backend), ['source' => 'required']);

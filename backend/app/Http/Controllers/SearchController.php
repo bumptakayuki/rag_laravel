@@ -3,9 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\RunsRagPipeline;
-use App\Models\Document;
+use App\Http\Requests\SearchRequest;
 use App\Models\QueryLog;
-use App\Services\Rag\GroupRanker;
 use App\Services\Rag\QueryLogRestorer;
 use App\Services\Rag\RagPipeline;
 use App\Services\Rag\RagResult;
@@ -13,9 +12,6 @@ use App\Services\Rag\Retriever;
 use App\Services\Rag\SearchOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\Validator as ValidationValidator;
 use Illuminate\View\View;
 
 /**
@@ -53,15 +49,9 @@ class SearchController extends Controller
         return view('search', [...$page, ...$this->resultViewData($restorer->restore($log), $retriever)]);
     }
 
-    public function run(Request $request, RagPipeline $pipeline, Retriever $retriever): RedirectResponse|View
+    public function run(SearchRequest $request, RagPipeline $pipeline, Retriever $retriever): RedirectResponse|View
     {
-        // ?q[]=x のような配列は '' にする（検証で弾き、画面に出すときのエスケープで落ちないように）
-        $input = collect(['scope', 'q', 'top_k', 'min_similarity', 'doc_type', 'score', 'action', 'compare_without_rag'])
-            ->mapWithKeys(fn (string $key) => [$key => is_array($v = $request->input($key)) ? '' : $v])
-            ->all();
-
-        // 入力の誤りは埋め込み API を呼ぶ前に止める（エラーを付けてフォームへ戻る）
-        $form = $this->validator($input)->validate();
+        $form = $request->validated();
 
         $options = SearchOptions::fromConfig([
             'top_k' => (int) $form['top_k'],
@@ -79,7 +69,7 @@ class SearchController extends Controller
                 ? $pipeline->searchJobs($form['q'], $options)
                 : $pipeline->ask($form['q'], $options, (int) config('rag.answer.chunks_per_candidate'), $searchOnly, $compare),
             fn (RagResult $result) => view('search', [
-                'form' => $input,
+                'form' => $request->formInput(),
                 ...$this->resultViewData($result, $retriever),
             ]),
         );
@@ -111,42 +101,5 @@ class SearchController extends Controller
 
         // 戻ってきた入力が配列（?q[]=x）なら '' にする（エスケープで落ちないように）
         return collect($values)->map(fn ($value, string $key) => is_array($old = old($key, $value)) ? '' : $old)->all();
-    }
-
-    private function validator(array $input): ValidationValidator
-    {
-        $validator = Validator::make($input, [
-            'scope' => ['required', Rule::in([Retriever::SCOPE_CANDIDATE, Retriever::SCOPE_JOB])],
-            'q' => ['required', 'string', 'max:1000'],
-            'top_k' => ['required', 'integer', 'min:1', 'max:50'],
-            'min_similarity' => ['required', 'numeric', 'min:-1', 'max:1'],
-            'doc_type' => ['nullable', Rule::in([Document::TYPE_RESUME, Document::TYPE_CAREER_HISTORY])],
-            'score' => ['required', Rule::in(GroupRanker::SCORE_METHODS)],
-            'action' => ['nullable', Rule::in(['ask', 'search'])],
-            'compare_without_rag' => ['nullable', 'boolean'],
-        ], [
-            // lang ファイルを入れていないので、この画面で使う規則のメッセージだけ日本語で書く
-            'required' => ':attribute を入力してください。',
-            'string' => ':attribute は文字列で入力してください。',
-            'max' => ':attribute は :max 以下にしてください。',
-            'min' => ':attribute は :min 以上にしてください。',
-            'integer' => ':attribute は整数で入力してください。',
-            'numeric' => ':attribute は数値で入力してください。',
-            'in' => ':attribute の値が正しくありません。',
-            'boolean' => ':attribute の値が正しくありません。',
-            'q.max' => ':attribute は :max 文字以内にしてください。',
-        ], [
-            'scope' => '検索対象', 'q' => '質問', 'top_k' => '表示する件数',
-            'min_similarity' => '類似度の下限', 'doc_type' => '検索する文書', 'score' => 'スコアの決め方',
-            'action' => '実行の種類', 'compare_without_rag' => 'RAGなし比較',
-        ]);
-        // 求人票には文書種別の絞り込みがない（Retriever も受け付けない）
-        $validator->after(function ($v) use ($input) {
-            if ($input['scope'] === Retriever::SCOPE_JOB && ! empty($input['doc_type'])) {
-                $v->errors()->add('doc_type', '求人票を検索するときは、検索する文書を指定できません。');
-            }
-        });
-
-        return $validator;
     }
 }
